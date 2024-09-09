@@ -1,6 +1,9 @@
-import { dynamics } from 'config';
-
+import { config } from 'config';
 import { StakePage } from 'features/stake';
-import HomePageIpfs from 'features/ipfs/home-page-ipfs';
+import { HomePageIpfs } from 'features/ipfs';
 
-export default dynamics.ipfsMode ? HomePageIpfs : StakePage;
+import { getDefaultStaticProps } from 'utilsApi/get-default-static-props';
+
+export const getStaticProps = getDefaultStaticProps();
+
+export default config.ipfsMode ? HomePageIpfs : StakePage;

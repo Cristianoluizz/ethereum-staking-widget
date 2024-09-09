@@ -1,13 +1,13 @@
-import { useEffect, useRef } from 'react';
+import { config } from 'config';
 import { Backend } from 'features/rewards/types';
-import { dynamics } from 'config';
 import { useLidoSWR } from 'shared/hooks';
 import { swrAbortableMiddleware } from 'utils';
+import { useLaggyDataWrapper } from './use-laggy-data-wrapper';
 
 type UseRewardsDataLoad = (props: {
   address: string;
   currency: string;
-  isOnlyRewards: boolean;
+  isIncludeTransfers: boolean;
   isUseArchiveExchangeRate: boolean;
   skip: number;
   limit: number;
@@ -23,18 +23,16 @@ export const useRewardsDataLoad: UseRewardsDataLoad = (props) => {
   const {
     address,
     currency,
-    isOnlyRewards,
+    isIncludeTransfers,
     isUseArchiveExchangeRate,
     skip,
     limit,
   } = props;
 
-  const laggyDataRef = useRef<Backend | undefined>();
-
   const requestOptions = {
     address,
     currency,
-    onlyRewards: isOnlyRewards,
+    onlyRewards: !isIncludeTransfers,
     archiveRate: isUseArchiveExchangeRate,
     skip,
     limit,
@@ -45,10 +43,12 @@ export const useRewardsDataLoad: UseRewardsDataLoad = (props) => {
     params.append(k, v.toString()),
   );
 
-  const apiRewardsPath = `/api/rewards?${params.toString()}`;
-  const apiRewardsUrl = dynamics.ipfsMode
-    ? `${dynamics.widgetApiBasePathForIpfs}${apiRewardsPath}`
-    : apiRewardsPath;
+  let apiRewardsUrl;
+  if (config.ipfsMode) {
+    apiRewardsUrl = `${config.rewardsBackendBasePath}?${params.toString()}`;
+  } else {
+    apiRewardsUrl = `/api/rewards?${params.toString()}`;
+  }
 
   const { data, ...rest } = useLidoSWR<Backend>(
     address ? apiRewardsUrl : null,
@@ -59,18 +59,7 @@ export const useRewardsDataLoad: UseRewardsDataLoad = (props) => {
     },
   );
 
-  useEffect(() => {
-    if (data !== undefined) {
-      laggyDataRef.current = data;
-    }
-  }, [data]);
+  const { isLagging, dataOrLaggyData } = useLaggyDataWrapper(data);
 
-  // Return to previous data if current data is not defined.
-  const dataOrLaggyData = data === undefined ? laggyDataRef.current : data;
-
-  // Shows previous data.
-  const isLagging =
-    !!address && data === undefined && laggyDataRef.current !== undefined;
-
-  return { ...rest, isLagging, data: dataOrLaggyData };
+  return { ...rest, isLagging: !!address && isLagging, data: dataOrLaggyData };
 };

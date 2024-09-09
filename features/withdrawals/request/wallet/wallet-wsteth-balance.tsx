@@ -6,8 +6,9 @@ import { useStethByWsteth } from 'shared/hooks';
 import { useRequestFormData } from '../request-form-context';
 
 export const WalletWstethBalance = () => {
-  const { balanceWSteth } = useRequestFormData();
-  const stethByWstethBalance = useStethByWsteth(balanceWSteth);
+  const { balanceWSteth, loading } = useRequestFormData();
+  const { data: stethByWstethBalance, initialLoading: isStethByWstethLoading } =
+    useStethByWsteth(balanceWSteth);
 
   const stethBalanceValue = (
     <>
@@ -30,8 +31,8 @@ export const WalletWstethBalance = () => {
   return (
     <CardBalance
       small
-      title="wstETH Balance"
-      loading={!balanceWSteth || !stethByWstethBalance}
+      title="wstETH balance"
+      loading={loading.isStethBalanceLoading || isStethByWstethLoading}
       value={stethBalanceValue}
     />
   );

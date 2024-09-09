@@ -1,11 +1,14 @@
+import { useFieldArray, useFormContext, useFormState } from 'react-hook-form';
+import { useDappStatus } from 'shared/hooks/use-dapp-status';
+
+import { ClaimFormInputType } from '../../claim-form-context';
 import { RequestItem } from './request-item';
 import { RequestsEmpty } from './requests-empty';
 import { Wrapper } from './styles';
 import { RequestsLoader } from './requests-loader';
-import { useFieldArray, useFormContext, useFormState } from 'react-hook-form';
-import { ClaimFormInputType } from '../../claim-form-context';
 
 export const RequestsList: React.FC = () => {
+  const { isWalletConnected, isDappActive } = useDappStatus();
   const { isLoading } = useFormState<ClaimFormInputType>();
   const { register } = useFormContext<ClaimFormInputType>();
   const { fields } = useFieldArray<ClaimFormInputType, 'requests'>({
@@ -16,8 +19,13 @@ export const RequestsList: React.FC = () => {
     return <RequestsLoader />;
   }
 
-  if (fields.length === 0) {
-    return <RequestsEmpty />;
+  if (!isDappActive || fields.length === 0) {
+    return (
+      <RequestsEmpty
+        isWalletConnected={isWalletConnected}
+        isDappActive={isDappActive}
+      />
+    );
   }
 
   return (

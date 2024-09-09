@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
-import { useWeb3 } from 'reef-knot/web3-react';
+import { useDappStatus } from 'shared/hooks/use-dapp-status';
 import { useAwaiter } from 'shared/hooks/use-awaiter';
 
 import type {
   WrapFormNetworkData,
+  WrapFormAsyncValidationContext,
   WrapFormValidationContext,
 } from '../wrap-form-context';
 
@@ -13,22 +14,52 @@ type UseWrapFormValidationContextArgs = {
 
 export const useWrapFormValidationContext = ({
   networkData,
-}: UseWrapFormValidationContextArgs) => {
-  const { active } = useWeb3();
-  const { maxAmountETH, maxAmountStETH, stakeLimitInfo } = networkData;
+}: UseWrapFormValidationContextArgs): WrapFormValidationContext => {
+  const { isDappActive } = useDappStatus();
+  const {
+    stakeLimitInfo,
+    ethBalance,
+    stethBalance,
+    isMultisig,
+    wrapEthGasCost,
+  } = networkData;
 
-  const validationContextAwaited: WrapFormValidationContext | undefined =
+  const waitForAccountData = isDappActive
+    ? stethBalance && ethBalance && isMultisig !== undefined
+    : true;
+
+  const isDataReady = !!(
+    waitForAccountData &&
+    wrapEthGasCost &&
+    stakeLimitInfo
+  );
+
+  const asyncContextValue: WrapFormAsyncValidationContext | undefined =
     useMemo(() => {
-      if ((active && !(maxAmountETH && maxAmountStETH)) || !stakeLimitInfo) {
-        return undefined;
-      }
-      return {
-        active,
-        maxAmountETH,
-        maxAmountStETH,
-        stakeLimitLevel: stakeLimitInfo.stakeLimitLevel,
-      };
-    }, [active, maxAmountETH, maxAmountStETH, stakeLimitInfo]);
+      return isDataReady
+        ? ({
+            isWalletActive: isDappActive,
+            stethBalance,
+            etherBalance: ethBalance,
+            isMultisig,
+            gasCost: wrapEthGasCost,
+            stakingLimitLevel: stakeLimitInfo?.stakeLimitLevel,
+            currentStakeLimit: stakeLimitInfo?.currentStakeLimit,
+          } as WrapFormAsyncValidationContext)
+        : undefined;
+    }, [
+      isDataReady,
+      isDappActive,
+      stethBalance,
+      ethBalance,
+      isMultisig,
+      wrapEthGasCost,
+      stakeLimitInfo?.stakeLimitLevel,
+      stakeLimitInfo?.currentStakeLimit,
+    ]);
 
-  return useAwaiter(validationContextAwaited).awaiter;
+  const asyncContext = useAwaiter(asyncContextValue).awaiter;
+  return {
+    asyncContext,
+  };
 };

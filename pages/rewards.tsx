@@ -1,16 +1,18 @@
 import { FC } from 'react';
 import Head from 'next/head';
-import { Layout } from 'shared/components';
+
 import { TopCard, RewardsList } from 'features/rewards/features';
 import RewardsHistoryProvider from 'providers/rewardsHistory';
-import { Fallback } from 'shared/wallet';
-import { GoerliSunsetBanner } from 'shared/banners/goerli-sunset';
+
+import { Layout } from 'shared/components';
+
+import { getDefaultStaticProps } from 'utilsApi/get-default-static-props';
 
 const Rewards: FC = () => {
   return (
     <Layout
       title="Reward History"
-      subtitle="Track your Ethereum staking rewards with Lido."
+      subtitle="Track your Ethereum staking rewards with Lido"
       containerSize="content"
     >
       <Head>
@@ -22,13 +24,13 @@ const Rewards: FC = () => {
         />
       </Head>
       <RewardsHistoryProvider>
-        <Fallback />
-        <GoerliSunsetBanner />
         <TopCard />
         <RewardsList />
       </RewardsHistoryProvider>
     </Layout>
   );
 };
+
+export const getStaticProps = getDefaultStaticProps();
 
 export default Rewards;

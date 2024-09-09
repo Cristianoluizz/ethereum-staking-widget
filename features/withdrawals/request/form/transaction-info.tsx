@@ -1,27 +1,29 @@
+import { useWatch } from 'react-hook-form';
 import { TOKENS } from '@lido-sdk/constants';
 import { DataTableRow } from '@lidofinance/lido-ui';
+
 import { useRequestTxPrice } from 'features/withdrawals/hooks/useWithdrawTxPrice';
 import { useApproveGasLimit } from 'features/wsteth/wrap/hooks/use-approve-gas-limit';
-import { useWatch } from 'react-hook-form';
+import { useDappStatus } from 'shared/hooks/use-dapp-status';
+import { AllowanceDataTableRow } from 'shared/components/allowance-data-table-row';
 import { DataTableRowStethByWsteth } from 'shared/components/data-table-row-steth-by-wsteth';
-import { FormatPrice, FormatToken } from 'shared/formatters';
+import { FormatPrice } from 'shared/formatters';
 import { useTxCostInUsd } from 'shared/hooks';
-import { getTokenDisplayName } from 'utils/getTokenDisplayName';
+
 import {
   RequestFormInputType,
   useRequestFormData,
   useValidationResults,
 } from '../request-form-context';
-import { MaxUint256 } from '@ethersproject/constants';
-import { useMemo } from 'react';
 
 export const TransactionInfo = () => {
+  const { isDappActive } = useDappStatus();
   const { isApprovalFlow, isApprovalFlowLoading, allowance } =
     useRequestFormData();
   const token = useWatch<RequestFormInputType, 'token'>({ name: 'token' });
   const { requests } = useValidationResults();
   const unlockCostTooltip = isApprovalFlow ? undefined : (
-    <>Lido leverages gasless token approvals via ERC-2612 permits</>
+    <>Lido leverages gasless token unlocks via ERC-2612 permits</>
   );
   const { txPriceUsd: requestTxPriceInUsd, loading: requestTxPriceLoading } =
     useRequestTxPrice({
@@ -29,14 +31,10 @@ export const TransactionInfo = () => {
       isApprovalFlow,
       requestCount: requests?.length,
     });
-  const approveGasLimit = useApproveGasLimit();
-  const approveTxCostInUsd = useTxCostInUsd(
-    approveGasLimit && Number(approveGasLimit),
-  );
-
-  const isInfiniteAllowance = useMemo(() => {
-    return allowance.eq(MaxUint256);
-  }, [allowance]);
+  const {
+    txCostUsd: approveTxCostInUsd,
+    initialLoading: isApproveTxCostLoading,
+  } = useTxCostInUsd(useApproveGasLimit());
 
   return (
     <>
@@ -44,7 +42,7 @@ export const TransactionInfo = () => {
         data-testid="maxUnlockCost"
         help={unlockCostTooltip}
         title="Max unlock cost"
-        loading={isApprovalFlowLoading}
+        loading={isApprovalFlowLoading || isApproveTxCostLoading}
       >
         {isApprovalFlow ? <FormatPrice amount={approveTxCostInUsd} /> : 'FREE'}
       </DataTableRow>
@@ -55,21 +53,13 @@ export const TransactionInfo = () => {
       >
         <FormatPrice amount={requestTxPriceInUsd} />
       </DataTableRow>
-      <DataTableRow
+      <AllowanceDataTableRow
         data-testid="allowance"
-        title="Allowance"
+        token={token}
+        allowance={allowance}
+        isBlank={!isDappActive}
         loading={isApprovalFlowLoading}
-      >
-        {isInfiniteAllowance ? (
-          'Infinite'
-        ) : (
-          <FormatToken
-            showAmountTip
-            amount={allowance}
-            symbol={getTokenDisplayName(token)}
-          />
-        )}
-      </DataTableRow>
+      />
       {token === TOKENS.STETH ? (
         <DataTableRow data-testid="exchangeRate" title="Exchange rate">
           1 stETH = 1 ETH

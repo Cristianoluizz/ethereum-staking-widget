@@ -1,3 +1,6 @@
+import { utils } from 'ethers';
+import { invert, isNull, memoize, omitBy } from 'lodash';
+
 import {
   CHAINS,
   TOKENS,
@@ -9,14 +12,11 @@ import {
   StethAbiFactory,
   WithdrawalQueueAbiFactory,
   WstethAbiFactory,
+  AggregatorAbiFactory,
 } from '@lido-sdk/contracts';
-import { dynamics, getAggregatorStEthUsdPriceFeedAddress } from 'config';
-import { utils } from 'ethers';
-import {
-  AggregatorAbi__factory,
-  AggregatorEthUsdPriceFeedAbi__factory,
-} from 'generated';
-import { invert, isNull, memoize, omitBy } from 'lodash';
+
+import { config } from 'config';
+import { getAggregatorStEthUsdPriceFeedAddress } from 'consts/aggregator';
 
 export const CONTRACT_NAMES = {
   stETH: 'stETH',
@@ -31,9 +31,8 @@ export const METRIC_CONTRACT_ABIS = {
   [CONTRACT_NAMES.stETH]: StethAbiFactory.abi,
   [CONTRACT_NAMES.wstETH]: WstethAbiFactory.abi,
   [CONTRACT_NAMES.WithdrawalQueue]: WithdrawalQueueAbiFactory.abi,
-  [CONTRACT_NAMES.Aggregator]: AggregatorAbi__factory.abi,
-  [CONTRACT_NAMES.AggregatorStEthUsdPriceFeed]:
-    AggregatorEthUsdPriceFeedAbi__factory.abi,
+  [CONTRACT_NAMES.Aggregator]: AggregatorAbiFactory.abi,
+  [CONTRACT_NAMES.AggregatorStEthUsdPriceFeed]: AggregatorAbiFactory.abi,
 } as const;
 
 export const getMetricContractInterface = memoize(
@@ -57,7 +56,7 @@ const getAddressOrNull = <
 };
 
 export const METRIC_CONTRACT_ADDRESSES = (
-  dynamics.supportedChains as CHAINS[]
+  config.supportedChains as CHAINS[]
 ).reduce(
   (mapped, chainId) => {
     const map = {

@@ -10,11 +10,9 @@ import { createHeadersObject } from 'next-secure-headers';
 import { ServerStyleSheet } from 'styled-components';
 import { Fonts, LidoUIHead } from '@lidofinance/lido-ui';
 
-import { dynamics, BASE_PATH_ASSET } from 'config';
+import { config } from 'config';
+import { contentSecurityPolicy } from 'config/csp';
 import { InsertIpfsBaseScript } from 'features/ipfs/ipfs-base-script';
-import { contentSecurityPolicy } from 'utilsApi/withCSP';
-
-let host = 'https://stake.lido.fi';
 
 const secureHeaders = createHeadersObject({ contentSecurityPolicy });
 const cspMetaTagContent =
@@ -27,10 +25,6 @@ export default class MyDocument extends Document {
   ): Promise<DocumentInitialProps> {
     const sheet = new ServerStyleSheet();
     const originalRenderPage = ctx.renderPage;
-
-    if (ctx?.req?.headers?.host) {
-      host = `https://${ctx?.req?.headers?.host}`;
-    }
 
     try {
       ctx.renderPage = () =>
@@ -68,56 +62,58 @@ export default class MyDocument extends Document {
   }
 
   get metaPreviewImgUrl(): string {
-    return `${host}/lido-preview.png`;
+    const origin = config.ipfsMode
+      ? 'https://stake.lido.fi'
+      : config.selfOrigin;
+    return `${origin}/lido-preview.png`;
   }
 
   render(): JSX.Element {
     return (
       <Html lang="en">
         <Head>
-          <meta
-            name="viewport"
-            content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no"
-          />
-          {dynamics.ipfsMode && (
+          {config.ipfsMode && (
             <meta
               httpEquiv="Content-Security-Policy"
               content={cspMetaTagContent}
             />
           )}
-          <link rel="manifest" href={`${BASE_PATH_ASSET}/manifest.json`} />
+          <link
+            rel="manifest"
+            href={`${config.BASE_PATH_ASSET}/manifest.json`}
+          />
           <link
             rel="icon"
-            href={`${BASE_PATH_ASSET}/favicon.ico`}
+            href={`${config.BASE_PATH_ASSET}/favicon.ico`}
             sizes="any"
           />
           <link
             rel="icon"
             type="image/svg+xml"
-            href={`${BASE_PATH_ASSET}/favicon-1080x1080.svg`}
+            href={`${config.BASE_PATH_ASSET}/favicon-1080x1080.svg`}
           />
           <link
             rel="apple-touch-icon"
             sizes="180x180"
-            href={`${BASE_PATH_ASSET}/apple-touch-icon.png`}
+            href={`${config.BASE_PATH_ASSET}/apple-touch-icon.png`}
           />
           <link
             rel="icon"
             type="image/png"
             sizes="192x192"
-            href={`${BASE_PATH_ASSET}/favicon-192x192.png`}
+            href={`${config.BASE_PATH_ASSET}/favicon-192x192.png`}
           />
           <link
             rel="icon"
             type="image/png"
             sizes="32x32"
-            href={`${BASE_PATH_ASSET}/favicon-32x32.png`}
+            href={`${config.BASE_PATH_ASSET}/favicon-32x32.png`}
           />
           <link
             rel="icon"
             type="image/png"
             sizes="16x16"
-            href={`${BASE_PATH_ASSET}/favicon-16x16.png`}
+            href={`${config.BASE_PATH_ASSET}/favicon-16x16.png`}
           />
           <meta property="og:type" content="website" />
           <meta property="og:title" content={this.metaTitle} />
@@ -130,12 +126,12 @@ export default class MyDocument extends Document {
           <meta name="twitter:site" content="@lidofinance" />
           <meta name="twitter:creator" content="@lomashuk" />
           <meta name="description" content={this.metaDescription} />
-          <meta name="currentChain" content={String(dynamics.defaultChain)} />
+          <meta name="currentChain" content={String(config.defaultChain)} />
           <Fonts />
           <LidoUIHead />
           <InsertIpfsBaseScript />
           {/* eslint-disable-next-line @next/next/no-sync-scripts */}
-          <script src={`${BASE_PATH_ASSET}/runtime/window-env.js`} />
+          <script src={`${config.BASE_PATH_ASSET}/runtime/window-env.js`} />
         </Head>
         <body>
           <Main />

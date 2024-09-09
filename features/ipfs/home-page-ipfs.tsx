@@ -10,7 +10,7 @@ import {
   WITHDRAWALS_REQUEST_PATH,
   WRAP_PATH,
   REFERRAL_PATH,
-} from 'config/urls';
+} from 'consts/urls';
 import NoSSRWrapper from 'shared/components/no-ssr-wrapper';
 import { usePrefixedReplace } from 'shared/hooks/use-prefixed-history';
 
@@ -37,7 +37,7 @@ const IPFS_ROUTABLE_PAGES = [
   getPathWithoutFirstSlash(SETTINGS_PATH),
 ];
 
-const HomePageIpfs: FC = () => {
+export const HomePageIpfs: FC = () => {
   const router = useRouter();
   const { asPath } = router;
 
@@ -111,8 +111,6 @@ const HomePageIpfs: FC = () => {
     }
   }
 
-  // Fix for runtime of `dev-ipfs` (see: package.json scripts)
+  // Fix for runtime of `dev:ipfs` (see: package.json scripts)
   return <NoSSRWrapper>{spaPage}</NoSSRWrapper>;
 };
-
-export default HomePageIpfs;

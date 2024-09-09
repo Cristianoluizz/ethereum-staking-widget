@@ -1,10 +1,5 @@
 import { isAddress } from 'ethers/lib/utils';
 import type { BaseProvider } from '@ethersproject/providers';
-import { BigNumber } from 'ethers';
-import { SUBMIT_EXTRA_GAS_TRANSACTION_RATIO, PRECISION } from 'config';
-
-export const applyGasLimitRatio = (gasLimit: BigNumber): BigNumber =>
-  gasLimit.mul(SUBMIT_EXTRA_GAS_TRANSACTION_RATIO * PRECISION).div(PRECISION);
 
 export const getAddress = async (
   input: string,
@@ -17,6 +12,7 @@ export const getAddress = async (
   } catch {
     // noop
   }
+  // if code gets here, ref is invalid and we need to throw error
   throw new ReferralAddressError();
 };
 

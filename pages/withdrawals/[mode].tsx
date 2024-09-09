@@ -1,16 +1,15 @@
-import { FC } from 'react';
-import { GetStaticPaths, GetStaticProps } from 'next';
+import type { FC } from 'react';
+import type { GetStaticPaths } from 'next';
 import Head from 'next/head';
-
-import { Layout } from 'shared/components';
-import NoSSRWrapper from 'shared/components/no-ssr-wrapper';
 
 import { WithdrawalsTabs } from 'features/withdrawals';
 import { WithdrawalsProvider } from 'features/withdrawals/contexts/withdrawals-context';
-import { useWeb3Key } from 'shared/hooks/useWeb3Key';
+import { Layout } from 'shared/components';
+import { useWagmiKey } from 'shared/hooks/use-wagmi-key';
+import { getDefaultStaticProps } from 'utilsApi/get-default-static-props';
 
 const Withdrawals: FC<WithdrawalsModePageParams> = ({ mode }) => {
-  const key = useWeb3Key();
+  const key = useWagmiKey();
 
   return (
     <Layout
@@ -21,9 +20,7 @@ const Withdrawals: FC<WithdrawalsModePageParams> = ({ mode }) => {
         <title>Withdrawals | Lido</title>
       </Head>
       <WithdrawalsProvider mode={mode}>
-        <NoSSRWrapper>
-          <WithdrawalsTabs key={key} />
-        </NoSSRWrapper>
+        <WithdrawalsTabs key={key} />
       </WithdrawalsProvider>
     </Layout>
   );
@@ -44,10 +41,10 @@ export const getStaticPaths: GetStaticPaths<
   };
 };
 
-export const getStaticProps: GetStaticProps<
+export const getStaticProps = getDefaultStaticProps<
   WithdrawalsModePageParams,
   WithdrawalsModePageParams
-> = async ({ params }) => {
+>(async ({ params }) => {
   if (!params?.mode) return { notFound: true };
   return { props: { mode: params.mode } };
-};
+});

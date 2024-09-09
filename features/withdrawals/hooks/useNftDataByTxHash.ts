@@ -1,9 +1,9 @@
-import { useSDK } from '@lido-sdk/react';
 import { useLidoSWR } from '@lido-sdk/react';
 import { useWithdrawalsContract } from './contract/useWithdrawalsContract';
 
 import { standardFetcher } from 'utils/standardFetcher';
 import type { TransactionReceipt } from '@ethersproject/abstract-provider';
+import { useCurrentStaticRpcProvider } from 'shared/hooks/use-current-static-rpc-provider';
 
 const EVENT_NAME = 'WithdrawalRequested';
 
@@ -14,18 +14,16 @@ type NFTApiData = {
 };
 
 export const useNftDataByTxHash = (txHash: string | null) => {
-  const { contractRpc, account } = useWithdrawalsContract();
-  const { providerWeb3 } = useSDK();
+  const { contractRpc, address } = useWithdrawalsContract();
+  const { staticRpcProvider } = useCurrentStaticRpcProvider();
 
   const swrNftApiData = useLidoSWR(
-    account && txHash && providerWeb3
-      ? ['swr:nft-data-by-tx-hash', txHash, account]
-      : null,
+    address && txHash ? ['swr:nft-data-by-tx-hash', txHash, address] : null,
     async () => {
-      if (!txHash || !account || !providerWeb3) return null;
+      if (!txHash || !address) return null;
 
       const txReciept: TransactionReceipt =
-        await providerWeb3.getTransactionReceipt(txHash);
+        await staticRpcProvider.getTransactionReceipt(txHash);
 
       const eventTopic = contractRpc.interface.getEventTopic(EVENT_NAME);
       const eventLogs = txReciept.logs.filter(

@@ -1,13 +1,13 @@
 import { useLidoSWR } from '@lido-sdk/react';
 
-import { dynamics } from 'config';
 import { standardFetcher } from 'utils/standardFetcher';
 
 import { CurveResponse } from './types';
+import { ETH_API_ROUTES, getEthApiPath } from 'consts/api';
 
 export const useCurve = () => {
   return useLidoSWR<CurveResponse>(
-    `${dynamics.ethAPIBasePath ?? ''}/v1/pool/curve/steth-eth/apr/last`,
+    getEthApiPath(ETH_API_ROUTES.CURVE_APR),
     standardFetcher,
   );
 };

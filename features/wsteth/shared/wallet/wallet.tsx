@@ -1,44 +1,51 @@
 import { memo } from 'react';
+
 import { Divider, Text } from '@lidofinance/lido-ui';
 import { TOKENS } from '@lido-sdk/constants';
-import {
-  useSDK,
-  useEthereumBalance,
-  useSTETHBalance,
-  useWSTETHBalance,
-  useTokenAddress,
-} from '@lido-sdk/react';
-import { useWeb3 } from 'reef-knot/web3-react';
+import { useSDK, useTokenAddress } from '@lido-sdk/react';
+
 import { FormatToken } from 'shared/formatters';
 import { TokenToWallet } from 'shared/components';
 import { useWstethBySteth, useStethByWsteth } from 'shared/hooks';
+import { useDappStatus } from 'shared/hooks/use-dapp-status';
+import { useLidoMultichainFallbackCondition } from 'shared/hooks/use-lido-multichain-fallback-condition';
 import type { WalletComponentType } from 'shared/wallet/types';
-import { CardBalance, CardRow, CardAccount, Fallback } from 'shared/wallet';
+import {
+  CardBalance,
+  CardRow,
+  CardAccount,
+  Fallback,
+  LidoMultichainFallback,
+} from 'shared/wallet';
+
 import { StyledCard } from './styles';
-import { STRATEGY_LAZY } from 'utils/swrStrategies';
+import {
+  useEthereumBalance,
+  useStethBalance,
+  useWstethBalance,
+} from 'shared/hooks/use-balance';
 
 const WalletComponent: WalletComponentType = (props) => {
   const { account } = useSDK();
-  const ethBalance = useEthereumBalance(undefined, STRATEGY_LAZY);
-  const stethBalance = useSTETHBalance(STRATEGY_LAZY);
-  const wstethBalance = useWSTETHBalance(STRATEGY_LAZY);
+  const ethBalance = useEthereumBalance();
+  const stethBalance = useStethBalance();
+  const wstethBalance = useWstethBalance();
 
   const stethAddress = useTokenAddress(TOKENS.STETH);
   const wstethAddress = useTokenAddress(TOKENS.WSTETH);
 
-  const wstethByStethBalance = useWstethBySteth(stethBalance.data);
-  const stethByWstethBalance = useStethByWsteth(wstethBalance.data);
+  const wstethBySteth = useWstethBySteth(stethBalance.data);
+  const stethByWsteth = useStethByWsteth(wstethBalance.data);
 
   return (
     <StyledCard data-testid="wrapCardSection" {...props}>
       <CardRow>
         <CardBalance
-          title="ETH Balance"
-          loading={ethBalance.initialLoading}
+          title="ETH balance"
+          loading={ethBalance.isLoading}
           value={
             <FormatToken
               data-testid="ethBalance"
-              showAmountTip
               amount={ethBalance.data}
               symbol="ETH"
             />
@@ -50,13 +57,12 @@ const WalletComponent: WalletComponentType = (props) => {
       <CardRow>
         <CardBalance
           small
-          title="stETH Balance"
-          loading={stethBalance.initialLoading}
+          title="stETH balance"
+          loading={stethBalance.isLoading || wstethBySteth.initialLoading}
           value={
             <>
               <FormatToken
                 data-testid="stEthBalance"
-                showAmountTip
                 amount={stethBalance.data}
                 symbol="stETH"
               />
@@ -65,11 +71,11 @@ const WalletComponent: WalletComponentType = (props) => {
                 address={stethAddress}
               />
               <Text size={'xxs'} color={'secondary'}>
-                ≈{' '}
                 <FormatToken
                   data-testid="wstEthBalanceOption"
-                  amount={wstethByStethBalance}
+                  amount={wstethBySteth.data}
                   symbol="wstETH"
+                  approx={true}
                 />
               </Text>
             </>
@@ -77,13 +83,12 @@ const WalletComponent: WalletComponentType = (props) => {
         />
         <CardBalance
           small
-          title="wstETH Balance"
-          loading={wstethBalance.initialLoading}
+          title="wstETH balance"
+          loading={wstethBalance.isLoading || stethByWsteth.initialLoading}
           value={
             <>
               <FormatToken
                 data-testid="wstEthBalance"
-                showAmountTip
                 amount={wstethBalance.data}
                 symbol="wstETH"
               />
@@ -92,11 +97,11 @@ const WalletComponent: WalletComponentType = (props) => {
                 address={wstethAddress}
               />
               <Text size={'xxs'} color={'secondary'}>
-                ≈{' '}
                 <FormatToken
                   data-testid="stethBalanceOption"
-                  amount={stethByWstethBalance}
+                  amount={stethByWsteth.data}
                   symbol="stETH"
+                  approx={true}
                 />
               </Text>
             </>
@@ -108,6 +113,16 @@ const WalletComponent: WalletComponentType = (props) => {
 };
 
 export const Wallet: WalletComponentType = memo((props) => {
-  const { active } = useWeb3();
-  return active ? <WalletComponent {...props} /> : <Fallback {...props} />;
+  const { isDappActive } = useDappStatus();
+  const { showLidoMultichainFallback } = useLidoMultichainFallbackCondition();
+
+  if (showLidoMultichainFallback) {
+    return <LidoMultichainFallback textEnding={'to wrap/unwrap'} {...props} />;
+  }
+
+  if (!isDappActive) {
+    return <Fallback {...props} />;
+  }
+
+  return <WalletComponent {...props} />;
 });

@@ -1,19 +1,23 @@
-import { RequestFormProvider } from './request-form-context';
+import { FaqPlaceholder } from 'features/ipfs';
+import { OnlyInfraRender } from 'shared/components/only-infra-render';
+import NoSSRWrapper from 'shared/components/no-ssr-wrapper';
+
 import { RequestFaq } from '../withdrawals-faq/request-faq';
+import { RequestFormProvider } from './request-form-context';
 import { RequestForm } from './form';
-import { TxRequestModal } from './tx-modal';
 import { RequestWallet } from './wallet';
-import { TransactionModalProvider } from 'shared/transaction-modal';
 
 export const Request = () => {
   return (
-    <TransactionModalProvider>
-      <RequestFormProvider>
+    <RequestFormProvider>
+      <NoSSRWrapper>
         <RequestWallet />
         <RequestForm />
+      </NoSSRWrapper>
+
+      <OnlyInfraRender renderIPFS={<FaqPlaceholder />}>
         <RequestFaq />
-        <TxRequestModal />
-      </RequestFormProvider>
-    </TransactionModalProvider>
+      </OnlyInfraRender>
+    </RequestFormProvider>
   );
 };

@@ -1,100 +1,123 @@
-import { FC, PropsWithChildren, useMemo } from 'react';
-import { ProviderWeb3 } from 'reef-knot/web3-react';
-import { getConnectors, holesky } from 'reef-knot/core-react';
-import { WagmiConfig, createClient, configureChains, Chain } from 'wagmi';
+import { FC, PropsWithChildren, useEffect, useMemo } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { WagmiProvider, createConfig, useConnections } from 'wagmi';
 import * as wagmiChains from 'wagmi/chains';
+import {
+  AutoConnect,
+  ReefKnot,
+  getWalletsDataList,
+} from 'reef-knot/core-react';
+import { WalletsListEthereum } from 'reef-knot/wallets';
 
-import { CHAINS } from 'utils/chains';
-import { getStaticRpcBatchProvider } from '@lido-sdk/providers';
+import { config } from 'config';
+import { useUserConfig } from 'config/user-config';
+import { useGetRpcUrlByChainId } from 'config/rpc';
+import { CHAINS } from 'consts/chains';
+import { ConnectWalletModal } from 'shared/wallet/connect-wallet-modal';
 
-import { useClientConfig } from 'providers/client-config';
-import { dynamics, useGetRpcUrlByChainId } from 'config';
+import { SDKLegacyProvider } from './sdk-legacy';
+import { useWeb3Transport } from 'utils/use-web3-transport';
+
+type ChainsList = [wagmiChains.Chain, ...wagmiChains.Chain[]];
+
+const wagmiChainsArray = Object.values(wagmiChains) as any as ChainsList;
+
+const queryClient = new QueryClient();
 
 const Web3Provider: FC<PropsWithChildren> = ({ children }) => {
-  const { defaultChain, supportedChainIds, walletconnectProjectId } =
-    useClientConfig();
+  const {
+    defaultChain: defaultChainId,
+    supportedChainIds,
+    walletconnectProjectId,
+    isWalletConnectionAllowed,
+  } = useUserConfig();
+
+  const { supportedChains, defaultChain } = useMemo(() => {
+    const supportedChains = wagmiChainsArray.filter((chain) =>
+      supportedChainIds.includes(chain.id),
+    );
+
+    const defaultChain =
+      supportedChains.find((chain) => chain.id === defaultChainId) ||
+      supportedChains[0]; // first supported chain as fallback
+    return {
+      supportedChains: supportedChains as ChainsList,
+      defaultChain,
+    };
+  }, [defaultChainId, supportedChainIds]);
 
   const getRpcUrlByChainId = useGetRpcUrlByChainId();
 
-  const backendRPC = useMemo(
+  const backendRPC: Record<number, string> = useMemo(
     () =>
-      supportedChainIds.reduce<Record<number, string>>(
+      supportedChainIds.reduce(
         (res, curr) => ({ ...res, [curr]: getRpcUrlByChainId(curr) }),
         {
-          // Required by reef-knot
+          // Mainnet RPC is always required for some requests, e.g. ETH to USD price, ENS lookup
           [CHAINS.Mainnet]: getRpcUrlByChainId(CHAINS.Mainnet),
         },
       ),
     [supportedChainIds, getRpcUrlByChainId],
   );
 
-  const client = useMemo(() => {
-    const wagmiChainsArray = Object.values({ ...wagmiChains, holesky });
-    const supportedChains = wagmiChainsArray.filter((chain) =>
-      dynamics.supportedChains.includes(chain.id),
-    );
-
-    // Adding Mumbai as a temporary workaround
-    // for the wagmi and walletconnect bug, when some wallets are failing to connect
-    // when there are only one supported network, so we need at least 2 of them.
-    // Mumbai should be the last in the array, otherwise wagmi can send request to it.
-    // TODO: remove after updating wagmi to v1+
-    supportedChains.push(wagmiChains.polygonMumbai);
-
-    const defaultChain =
-      wagmiChainsArray.find((chain) => chain.id === dynamics.defaultChain) ||
-      supportedChains[0]; // first supported chain as fallback
-
-    const jsonRpcBatchProvider = (chain: Chain) => ({
-      provider: () =>
-        getStaticRpcBatchProvider(
-          chain.id,
-          getRpcUrlByChainId(chain.id),
-          undefined,
-          12000,
-        ),
-      chain: {
-        ...chain,
-        rpcUrls: {
-          ...chain.rpcUrls,
-          public: { http: [getRpcUrlByChainId(chain.id)] },
-          default: { http: [getRpcUrlByChainId(chain.id)] },
-        },
-      },
-    });
-
-    const { chains, provider, webSocketProvider } = configureChains(
-      supportedChains,
-      [jsonRpcBatchProvider],
-    );
-
-    const connectors = getConnectors({
-      chains,
-      defaultChain,
+  const { walletsDataList } = useMemo(() => {
+    return getWalletsDataList({
+      walletsList: WalletsListEthereum,
       rpc: backendRPC,
       walletconnectProjectId,
+      defaultChain,
     });
+  }, [backendRPC, defaultChain, walletconnectProjectId]);
 
-    return createClient({
-      connectors,
-      autoConnect: true,
-      provider,
-      webSocketProvider,
+  const { transportMap, onActiveConnection } = useWeb3Transport(
+    supportedChains,
+    backendRPC,
+  );
+
+  const wagmiConfig = useMemo(() => {
+    return createConfig({
+      chains: supportedChains,
+      ssr: true,
+      connectors: [],
+
+      batch: {
+        // eth_call's can be batched via multicall contract
+        multicall: {
+          wait: config.PROVIDER_BATCH_TIME,
+        },
+      },
+      multiInjectedProviderDiscovery: false,
+      pollingInterval: config.PROVIDER_POLLING_INTERVAL,
+      transports: transportMap,
     });
-  }, [backendRPC, getRpcUrlByChainId, walletconnectProjectId]);
+  }, [supportedChains, transportMap]);
+
+  const [activeConnection] = useConnections({ config: wagmiConfig });
+
+  useEffect(() => {
+    void onActiveConnection(activeConnection ?? null);
+  }, [activeConnection, onActiveConnection]);
 
   return (
-    <WagmiConfig client={client}>
-      <ProviderWeb3
-        pollingInterval={1200}
-        defaultChainId={defaultChain}
-        supportedChainIds={supportedChainIds}
-        rpc={backendRPC}
-        walletconnectProjectId={walletconnectProjectId}
-      >
-        {children}
-      </ProviderWeb3>
-    </WagmiConfig>
+    // default wagmi autoConnect, MUST be false in our case, because we use custom autoConnect from Reef Knot
+    <WagmiProvider config={wagmiConfig} reconnectOnMount={false}>
+      <QueryClientProvider client={queryClient}>
+        <ReefKnot
+          rpc={backendRPC}
+          chains={supportedChains}
+          walletDataList={walletsDataList}
+        >
+          {isWalletConnectionAllowed && <AutoConnect autoConnect />}
+          <SDKLegacyProvider
+            defaultChainId={defaultChain.id}
+            pollingInterval={config.PROVIDER_POLLING_INTERVAL}
+          >
+            {children}
+            <ConnectWalletModal />
+          </SDKLegacyProvider>
+        </ReefKnot>
+      </QueryClientProvider>
+    </WagmiProvider>
   );
 };
 

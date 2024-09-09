@@ -1,14 +1,15 @@
 import { useCallback } from 'react';
 import { Check, Close } from '@lidofinance/lido-ui';
 
-import { SETTINGS_PATH } from 'config/urls';
+import { config } from 'config';
+import { SETTINGS_PATH } from 'consts/urls';
 import { useIPFSInfoBoxStatuses } from 'providers/ipfs-info-box-statuses';
 import { usePrefixedPush } from 'shared/hooks/use-prefixed-history';
 import { LinkArrow } from 'shared/components/link-arrow/link-arrow';
 
 import { Wrap, RpcStatusBox, Button, Text } from './styles';
 
-const IPFS_INFO_URL = 'https://docs.ipfs.tech/concepts/what-is-ipfs/';
+export const IPFS_INFO_URL = `${config.docsOrigin}/ipfs/about`;
 
 export const RPCAvailabilityCheckResultBox = () => {
   const { isRPCAvailable, handleClickDismiss } = useIPFSInfoBoxStatuses();
@@ -23,9 +24,9 @@ export const RPCAvailabilityCheckResultBox = () => {
   return (
     <Wrap>
       <Text weight={700} size="xs" color="accentContrast">
-        You are currently using the IPFS widget&apos;s version.
+        You are currently using the IPFS widget version.
       </Text>
-      <LinkArrow href={IPFS_INFO_URL}>IPFS</LinkArrow>
+      <LinkArrow href={IPFS_INFO_URL}>What is IPFS</LinkArrow>
       {isRPCAvailable && (
         <>
           <RpcStatusBox status="success">

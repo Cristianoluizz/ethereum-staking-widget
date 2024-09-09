@@ -1,27 +1,20 @@
 import { useMemo } from 'react';
-import { useLidoSWR, useSDK } from '@lido-sdk/react';
-import { standardFetcher } from 'utils/standardFetcher';
-import {
-  ESTIMATE_ACCOUNT,
-  WITHDRAWAL_QUEUE_CLAIM_GAS_LIMIT_DEFAULT,
-  WITHDRAWAL_QUEUE_REQUEST_STETH_APPROVED_GAS_LIMIT_DEFAULT,
-  WITHDRAWAL_QUEUE_REQUEST_STETH_PERMIT_GAS_LIMIT_DEFAULT,
-  WITHDRAWAL_QUEUE_REQUEST_WSTETH_PERMIT_GAS_LIMIT_DEFAULT,
-  WITHDRAWAL_QUEUE_REQUEST_WSTETH_APPROVED_GAS_LIMIT_DEFAULT,
-  dynamics,
-} from 'config';
-import { MAX_REQUESTS_COUNT } from 'features/withdrawals/withdrawals-constants';
+import { BigNumber } from 'ethers';
+import invariant from 'tiny-invariant';
+import { useAccount } from 'wagmi';
 
-import { useWeb3 } from 'reef-knot/web3-react';
 import { TOKENS } from '@lido-sdk/constants';
+import { useLidoSWR, useSDK } from '@lido-sdk/react';
 
-import { useWithdrawalsContract } from './contract/useWithdrawalsContract';
+import { config } from 'config';
+import { STRATEGY_LAZY } from 'consts/swr-strategies';
+import { MAX_REQUESTS_COUNT } from 'features/withdrawals/withdrawals-constants';
 import { useTxCostInUsd } from 'shared/hooks/txCost';
 import { useDebouncedValue } from 'shared/hooks/useDebouncedValue';
 import { encodeURLQuery } from 'utils/encodeURLQuery';
-import { BigNumber } from 'ethers';
-import invariant from 'tiny-invariant';
-import { STRATEGY_LAZY } from 'utils/swrStrategies';
+import { standardFetcher } from 'utils/standardFetcher';
+
+import { useWithdrawalsContract } from './contract/useWithdrawalsContract';
 import { RequestStatusClaimable } from '../types/request-status';
 
 type UseRequestTxPriceOptions = {
@@ -40,17 +33,17 @@ export const useRequestTxPrice = ({
   const fallback =
     token === 'STETH'
       ? isApprovalFlow
-        ? WITHDRAWAL_QUEUE_REQUEST_STETH_APPROVED_GAS_LIMIT_DEFAULT
-        : WITHDRAWAL_QUEUE_REQUEST_STETH_PERMIT_GAS_LIMIT_DEFAULT
+        ? config.WITHDRAWAL_QUEUE_REQUEST_STETH_APPROVED_GAS_LIMIT_DEFAULT
+        : config.WITHDRAWAL_QUEUE_REQUEST_STETH_PERMIT_GAS_LIMIT_DEFAULT
       : isApprovalFlow
-      ? WITHDRAWAL_QUEUE_REQUEST_WSTETH_APPROVED_GAS_LIMIT_DEFAULT
-      : WITHDRAWAL_QUEUE_REQUEST_WSTETH_PERMIT_GAS_LIMIT_DEFAULT;
+        ? config.WITHDRAWAL_QUEUE_REQUEST_WSTETH_APPROVED_GAS_LIMIT_DEFAULT
+        : config.WITHDRAWAL_QUEUE_REQUEST_WSTETH_PERMIT_GAS_LIMIT_DEFAULT;
 
   const cappedRequestCount = Math.min(requestCount || 1, MAX_REQUESTS_COUNT);
   const debouncedRequestCount = useDebouncedValue(cappedRequestCount, 2000);
 
   const url = useMemo(() => {
-    const basePath = dynamics.wqAPIBasePath;
+    const basePath = config.wqAPIBasePath;
     const params = encodeURLQuery({
       token,
       requestCount: debouncedRequestCount,
@@ -63,6 +56,9 @@ export const useRequestTxPrice = ({
       ...STRATEGY_LAZY,
       isPaused: () => !chainId || isApprovalFlow,
     });
+  const permitGasLimit = permitEstimateData
+    ? BigNumber.from(permitEstimateData?.gasLimit)
+    : undefined;
 
   const { data: approvalFlowGasLimit, initialLoading: approvalLoading } =
     useLidoSWR(
@@ -71,15 +67,13 @@ export const useRequestTxPrice = ({
         try {
           invariant(chainId, 'chainId is required');
           invariant(contractRpc, 'contractRpc is required');
-          const gasLimit = (
-            await contractRpc.estimateGas.requestWithdrawals(
-              Array.from<BigNumber>({ length: debouncedRequestCount }).fill(
-                BigNumber.from(100),
-              ),
-              ESTIMATE_ACCOUNT,
-              { from: ESTIMATE_ACCOUNT },
-            )
-          ).toNumber();
+          const gasLimit = await contractRpc.estimateGas.requestWithdrawals(
+            Array.from<BigNumber>({ length: debouncedRequestCount }).fill(
+              BigNumber.from(100),
+            ),
+            config.ESTIMATE_ACCOUNT,
+            { from: config.ESTIMATE_ACCOUNT },
+          );
           return gasLimit;
         } catch (error) {
           console.warn('Could not estimate gas for request', {
@@ -95,14 +89,16 @@ export const useRequestTxPrice = ({
     );
 
   const gasLimit =
-    (isApprovalFlow ? approvalFlowGasLimit : permitEstimateData?.gasLimit) ??
-    fallback * debouncedRequestCount;
+    (isApprovalFlow ? approvalFlowGasLimit : permitGasLimit) ??
+    fallback.mul(debouncedRequestCount);
 
-  const txPriceUsd = useTxCostInUsd(gasLimit);
+  const { txCostUsd: txPriceUsd, initialLoading: isTxCostLoading } =
+    useTxCostInUsd(gasLimit);
 
   const loading =
     cappedRequestCount !== debouncedRequestCount ||
-    (isApprovalFlow ? approvalLoading : permitLoading);
+    (isApprovalFlow ? approvalLoading : permitLoading) ||
+    isTxCostLoading;
 
   return {
     loading,
@@ -113,7 +109,7 @@ export const useRequestTxPrice = ({
 
 export const useClaimTxPrice = (requests: RequestStatusClaimable[]) => {
   const { contractRpc } = useWithdrawalsContract();
-  const { account, chainId } = useWeb3();
+  const { address, chainId } = useAccount();
 
   const requestCount = requests.length || 1;
   const debouncedSortedSelectedRequests = useDebouncedValue(requests, 2000);
@@ -122,13 +118,13 @@ export const useClaimTxPrice = (requests: RequestStatusClaimable[]) => {
       [
         'swr:claim-request-gas-limit',
         debouncedSortedSelectedRequests,
-        account,
+        address,
         chainId,
       ],
       async () => {
         if (
           !chainId ||
-          !account ||
+          !address ||
           !contractRpc ||
           debouncedSortedSelectedRequests.length === 0
         )
@@ -139,12 +135,12 @@ export const useClaimTxPrice = (requests: RequestStatusClaimable[]) => {
           .claimWithdrawals(
             sortedRequests.map((r) => r.id),
             sortedRequests.map((r) => r.hint),
-            { from: account },
+            { from: address },
           )
           .catch((error) => {
             console.warn('Could not estimate gas for claim', {
               ids: sortedRequests.map((r) => r.id),
-              account,
+              address,
               error,
             });
             return undefined;
@@ -157,15 +153,16 @@ export const useClaimTxPrice = (requests: RequestStatusClaimable[]) => {
 
   const gasLimit = isEstimateLoading
     ? undefined
-    : gasLimitResult?.toNumber() ??
-      WITHDRAWAL_QUEUE_CLAIM_GAS_LIMIT_DEFAULT * requestCount;
+    : gasLimitResult ??
+      config.WITHDRAWAL_QUEUE_CLAIM_GAS_LIMIT_DEFAULT.mul(requestCount);
 
-  const price = useTxCostInUsd(gasLimit);
+  const { txCostUsd: price, initialLoading: isTxCostLoading } =
+    useTxCostInUsd(gasLimit);
 
   return {
     loading:
       isEstimateLoading ||
-      !price ||
+      isTxCostLoading ||
       debouncedSortedSelectedRequests !== requests,
     claimGasLimit: gasLimit,
     claimTxPriceInUsd: price,

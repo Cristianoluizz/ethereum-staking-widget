@@ -4,7 +4,8 @@ import { CHAINS } from '@lido-sdk/constants';
 import { getStaticRpcBatchProvider } from '@lido-sdk/providers';
 import { StaticJsonRpcBatchProvider } from '@lidofinance/eth-providers';
 
-import { useRpcUrl } from 'config';
+import { useRpcUrl } from 'config/rpc';
+import { config } from 'config';
 
 export const useCurrentStaticRpcProvider = (): {
   staticRpcProvider: StaticJsonRpcBatchProvider;
@@ -14,7 +15,11 @@ export const useCurrentStaticRpcProvider = (): {
   const rpcUrl = useRpcUrl();
 
   const staticRpcProvider = useMemo(() => {
-    return getStaticRpcBatchProvider(chainId, rpcUrl);
+    return getStaticRpcBatchProvider(
+      chainId,
+      rpcUrl,
+      config.PROVIDER_POLLING_INTERVAL,
+    );
   }, [chainId, rpcUrl]);
 
   return {

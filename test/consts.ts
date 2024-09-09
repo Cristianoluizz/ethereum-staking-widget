@@ -3,6 +3,7 @@ import { CONFIG } from './config.js';
 export interface GetRequest {
   uri: string;
   schema: object;
+  isDeprecated?: boolean;
   skipTestnet?: boolean;
 }
 
@@ -14,166 +15,24 @@ export interface PostRequest {
 
 const FLOAT_REGEX = /^\d+(\.\d+)?$/;
 
-const LIDO_STATS_SCHEMA = {
-  type: 'object',
-  properties: {
-    data: {
+export const GET_REQUESTS: GetRequest[] = [
+  {
+    uri: '/api/oneinch-rate?token=ETH',
+    isDeprecated: true,
+    schema: {
       type: 'object',
       properties: {
-        address: {
-          type: 'string',
-        },
-        decimals: {
-          type: 'string',
-        },
-        name: {
-          type: 'string',
-        },
-        symbol: {
-          type: 'string',
-        },
-        totalSupply: {
-          type: 'string',
-        },
-        transfersCount: {
-          type: 'integer',
-        },
-        txsCount: {
-          type: 'integer',
-        },
-        lastUpdated: {
-          type: 'integer',
-        },
-        issuancesCount: {
-          type: 'integer',
-        },
-        holdersCount: {
-          type: 'integer',
-        },
-        website: {
-          type: 'string',
-        },
-        image: {
-          type: 'string',
-        },
-        ethTransfersCount: {
-          type: 'integer',
-        },
-        price: {
-          type: 'object',
-          properties: {
-            rate: {
-              type: 'number',
-            },
-            diff: {
-              type: 'number',
-            },
-            diff7d: {
-              type: 'number',
-            },
-            ts: {
-              type: 'integer',
-            },
-            marketCapUsd: {
-              type: 'number',
-            },
-            availableSupply: {
-              type: 'number',
-            },
-            volume24h: {
-              type: 'number',
-            },
-            volDiff1: {
-              type: 'number',
-            },
-            volDiff7: {
-              type: 'number',
-            },
-            volDiff30: {
-              type: 'number',
-            },
-            diff30d: {
-              type: 'number',
-            },
-            bid: {
-              type: 'number',
-            },
-            currency: {
-              type: 'string',
-            },
-          },
-          required: [
-            'rate',
-            'diff',
-            'diff7d',
-            'ts',
-            'marketCapUsd',
-            'availableSupply',
-            'volume24h',
-            'volDiff1',
-            'volDiff7',
-            'volDiff30',
-            'diff30d',
-            'bid',
-            'currency',
-          ],
-          additionalProperties: false,
-        },
-        publicTags: {
-          type: 'array',
-          items: [
-            {
-              type: 'string',
-            },
-          ],
-        },
-        owner: {
-          type: 'string',
-        },
-        countOps: {
-          type: 'integer',
-        },
+        rate: { type: 'number', min: 0 },
+        toReceive: { type: 'string' },
+        fromAmount: { type: 'string' },
       },
-      required: [
-        'address',
-        'decimals',
-        'name',
-        'symbol',
-        'totalSupply',
-        'transfersCount',
-        'txsCount',
-        'lastUpdated',
-        'issuancesCount',
-        'holdersCount',
-        'website',
-        'image',
-        'price',
-        'publicTags',
-        'owner',
-        'countOps',
-      ],
+      required: ['rate', 'toReceive', 'fromAmount'],
       additionalProperties: false,
     },
   },
-  required: ['data'],
-  additionalProperties: false,
-};
-
-export const GET_REQUESTS: GetRequest[] = [
-  // TODO: enabled when bringing back 1inch endpoint
-  // {
-  //   uri: '/api/oneinch-rate',
-  //   schema: {
-  //     type: 'object',
-  //     properties: {
-  //       rate: { type: 'number', min: 0 },
-  //     },
-  //     required: ['rate'],
-  //     additionalProperties: false,
-  //   },
-  // },
   {
     uri: `/api/short-lido-stats?chainId=${CONFIG.STAND_CONFIG.chainId}`,
+    isDeprecated: true,
     schema: {
       type: 'object',
       properties: {
@@ -188,27 +47,22 @@ export const GET_REQUESTS: GetRequest[] = [
         'uniqueAnytimeHolders',
         'uniqueHolders',
       ],
-      additionalProperties: false,
+      additionalProperties: true,
     },
   },
   {
     uri: '/api/eth-apr',
+    isDeprecated: true,
     schema: { type: 'string', pattern: FLOAT_REGEX },
   },
   {
     uri: '/api/totalsupply',
+    isDeprecated: true,
     schema: { type: 'string', pattern: FLOAT_REGEX },
   },
   {
-    uri: '/api/lidostats',
-    schema: LIDO_STATS_SCHEMA,
-  },
-  {
-    uri: '/api/ldo-stats',
-    schema: LIDO_STATS_SCHEMA,
-  },
-  {
     uri: '/api/eth-price',
+    isDeprecated: true,
     schema: {
       type: 'object',
       properties: {
@@ -218,7 +72,7 @@ export const GET_REQUESTS: GetRequest[] = [
         },
       },
       required: ['price'],
-      additionalProperties: false,
+      additionalProperties: true,
     },
   },
   {
@@ -269,6 +123,7 @@ export const GET_REQUESTS: GetRequest[] = [
   },
   {
     uri: '/api/sma-steth-apr',
+    isDeprecated: true,
     schema: {
       type: 'string',
       pattern: FLOAT_REGEX,

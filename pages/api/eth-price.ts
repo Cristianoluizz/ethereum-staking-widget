@@ -1,42 +1,43 @@
-import { Cache } from 'memory-cache';
 import {
   wrapRequest as wrapNextRequest,
   cacheControl,
 } from '@lidofinance/next-api-wrapper';
+
+import { config } from 'config';
 import {
-  CACHE_ETH_PRICE_KEY,
-  CACHE_ETH_PRICE_TTL,
-  CACHE_ETH_PRICE_HEADERS,
+  API_LATER_SUNSET_TIMESTAMP,
   API_ROUTES,
-} from 'config';
+  ETH_API_ROUTES,
+  getReplacementLink,
+} from 'consts/api';
 import {
-  getEthPrice,
   defaultErrorHandler,
   responseTimeMetric,
   rateLimit,
+  httpMethodGuard,
+  HttpMethod,
+  sunsetBy,
+  cors,
 } from 'utilsApi';
 import Metrics from 'utilsApi/metrics';
-import { API } from 'types';
 
-const cache = new Cache<typeof CACHE_ETH_PRICE_KEY, unknown>();
-
-// Proxy for third-party API.
-const ethPrice: API = async (req, res) => {
-  const cachedEthPrice = cache.get(CACHE_ETH_PRICE_KEY);
-
-  if (cachedEthPrice) {
-    res.json(cachedEthPrice);
-  } else {
-    const ethPrice = await getEthPrice();
-    cache.put(CACHE_ETH_PRICE_KEY, { price: ethPrice }, CACHE_ETH_PRICE_TTL);
-
-    res.json({ price: ethPrice });
-  }
-};
+import { createEthApiProxy } from 'utilsApi/cached-proxy';
 
 export default wrapNextRequest([
+  httpMethodGuard([HttpMethod.GET]),
+  cors({ origin: ['*'], methods: [HttpMethod.GET] }),
   rateLimit,
   responseTimeMetric(Metrics.request.apiTimings, API_ROUTES.ETH_PRICE),
-  cacheControl({ headers: CACHE_ETH_PRICE_HEADERS }),
+  cacheControl({ headers: config.CACHE_ETH_PRICE_HEADERS }),
+  sunsetBy({
+    sunsetTimestamp: API_LATER_SUNSET_TIMESTAMP,
+    replacementLink: getReplacementLink(API_ROUTES.ETH_PRICE),
+  }),
   defaultErrorHandler,
-])(ethPrice);
+])(
+  createEthApiProxy({
+    cacheTTL: config.CACHE_ETH_PRICE_TTL,
+    endpoint: ETH_API_ROUTES.ETH_PRICE,
+    ignoreParams: true,
+  }),
+);

@@ -1,44 +1,55 @@
 import { FC } from 'react';
-import { ButtonProps } from '@lidofinance/lido-ui';
-import { MODAL } from 'providers';
-import { useModal } from 'shared/hooks';
-import { useEthereumBalance, useSDK } from '@lido-sdk/react';
+import { useAccount } from 'wagmi';
+import { ButtonProps, useBreakpoint } from '@lidofinance/lido-ui';
+
 import { FormatToken } from 'shared/formatters';
+import { useDappStatus } from 'shared/hooks/use-dapp-status';
+
 import { AddressBadge } from '../components/address-badge/address-badge';
+import { useWalletModal } from '../wallet-modal/use-wallet-modal';
+
 import {
   WalledButtonStyle,
   WalledButtonWrapperStyle,
   WalledButtonBalanceStyle,
   WalledButtonLoaderStyle,
 } from './styles';
-import { STRATEGY_LAZY } from 'utils/swrStrategies';
+import { useEthereumBalance } from 'shared/hooks/use-balance';
 
 export const Button: FC<ButtonProps> = (props) => {
   const { onClick, ...rest } = props;
-  const { openModal } = useModal(MODAL.wallet);
-  const { account } = useSDK();
-  const { data: balance, initialLoading } = useEthereumBalance(
-    undefined,
-    STRATEGY_LAZY,
-  );
+
+  const isMobile = useBreakpoint('md');
+  const { address } = useAccount();
+  const { isDappActive } = useDappStatus();
+
+  const { openModal } = useWalletModal();
+  const { data: balance, isLoading } = useEthereumBalance();
 
   return (
     <WalledButtonStyle
       size="sm"
       variant="text"
       color="secondary"
-      onClick={openModal}
+      onClick={() => openModal({})}
+      $isAddPaddingLeft={!isLoading && !isDappActive && !isMobile}
       {...rest}
     >
       <WalledButtonWrapperStyle>
         <WalledButtonBalanceStyle>
-          {initialLoading ? (
+          {isLoading ? (
             <WalledButtonLoaderStyle />
           ) : (
-            <FormatToken amount={balance} symbol="ETH" />
+            isDappActive && (
+              <FormatToken
+                amount={balance}
+                symbol="ETH"
+                showAmountTip={false}
+              />
+            )
           )}
         </WalledButtonBalanceStyle>
-        <AddressBadge address={account} />
+        <AddressBadge address={address as `0x${string}`} />
       </WalledButtonWrapperStyle>
     </WalledButtonStyle>
   );

@@ -1,107 +1,101 @@
 import { useCallback } from 'react';
 import { BigNumber } from 'ethers';
+import invariant from 'tiny-invariant';
+import { useAccount } from 'wagmi';
+
+import { useSDK } from '@lido-sdk/react';
 
 import { useClaimData } from 'features/withdrawals/contexts/claim-data-context';
-import { getErrorMessage, runWithTransactionLogger } from 'utils';
+import { RequestStatusClaimable } from 'features/withdrawals/types/request-status';
+import { useTxModalStagesClaim } from 'features/withdrawals/claim/transaction-modal-claim/use-tx-modal-stages-claim';
+import { useCurrentStaticRpcProvider } from 'shared/hooks/use-current-static-rpc-provider';
+import { runWithTransactionLogger } from 'utils';
+import { isContract } from 'utils/isContract';
+import { sendTx } from 'utils/send-tx';
+import { useTxConfirmation } from 'shared/hooks/use-tx-conformation';
 
 import { useWithdrawalsContract } from './useWithdrawalsContract';
-import { RequestStatusClaimable } from 'features/withdrawals/types/request-status';
-import invariant from 'tiny-invariant';
-import { isContract } from 'utils/isContract';
-import { useWeb3 } from 'reef-knot/web3-react';
-import { useSDK } from '@lido-sdk/react';
-import { useTransactionModal, TX_OPERATION } from 'shared/transaction-modal';
 
-export const useClaim = () => {
-  const { account } = useWeb3();
+type Args = {
+  onRetry?: () => void;
+};
+
+export const useClaim = ({ onRetry }: Args) => {
+  const { address } = useAccount();
   const { providerWeb3 } = useSDK();
   const { contractWeb3 } = useWithdrawalsContract();
+  const { staticRpcProvider } = useCurrentStaticRpcProvider();
   const { optimisticClaimRequests } = useClaimData();
-  const { dispatchModalState } = useTransactionModal();
+  const { txModalStages } = useTxModalStagesClaim();
+  const waitForTx = useTxConfirmation();
 
   return useCallback(
     async (sortedRequests: RequestStatusClaimable[]) => {
       try {
         invariant(contractWeb3, 'must have contract');
         invariant(sortedRequests, 'must have requests');
-        invariant(account, 'must have address');
+        invariant(address, 'must have address');
         invariant(providerWeb3, 'must have provider');
-        const isMultisig = await isContract(account, contractWeb3.provider);
 
-        const ethToClaim = sortedRequests.reduce(
+        const isMultisig = await isContract(address, contractWeb3.provider);
+
+        const amount = sortedRequests.reduce(
           (s, r) => s.add(r.claimableEth),
           BigNumber.from(0),
         );
 
-        dispatchModalState({
-          type: 'start',
-          operation: TX_OPERATION.CONTRACT,
-          amount: ethToClaim,
-          token: 'ETH',
-        });
+        txModalStages.sign(amount);
 
         const ids = sortedRequests.map((r) => r.id);
         const hints = sortedRequests.map((r) => r.hint);
         const callback = async () => {
-          if (isMultisig) {
-            const tx = await contractWeb3.populateTransaction.claimWithdrawals(
-              ids,
-              hints,
-            );
-            return providerWeb3.getSigner().sendUncheckedTransaction(tx);
-          } else {
-            const feeData = await contractWeb3.provider.getFeeData();
-            const maxFeePerGas = feeData.maxFeePerGas ?? undefined;
-            const maxPriorityFeePerGas =
-              feeData.maxPriorityFeePerGas ?? undefined;
-            const gasLimit = await contractWeb3.estimateGas.claimWithdrawals(
-              ids,
-              hints,
-              {
-                maxFeePerGas,
-                maxPriorityFeePerGas,
-              },
-            );
-            return contractWeb3.claimWithdrawals(ids, hints, {
-              maxFeePerGas,
-              maxPriorityFeePerGas,
-              gasLimit,
-            });
-          }
+          const tx = await contractWeb3.populateTransaction.claimWithdrawals(
+            ids,
+            hints,
+          );
+          return sendTx({
+            tx,
+            isMultisig,
+            staticProvider: staticRpcProvider,
+            walletProvider: providerWeb3,
+          });
         };
 
-        const transaction = await runWithTransactionLogger(
+        const txHash = await runWithTransactionLogger(
           'Claim signing',
           callback,
         );
 
-        const isTransaction = typeof transaction !== 'string';
-
-        if (!isMultisig && isTransaction) {
-          dispatchModalState({ type: 'block', txHash: transaction.hash });
-          await runWithTransactionLogger('Claim block confirmation', async () =>
-            transaction.wait(),
-          );
-          // we only update if we wait for tx
-          await optimisticClaimRequests(sortedRequests);
+        if (isMultisig) {
+          txModalStages.successMultisig();
+          return true;
         }
 
-        dispatchModalState({
-          type: isMultisig ? 'success_multisig' : 'success',
-        });
+        txModalStages.pending(amount, txHash);
+
+        await runWithTransactionLogger('Claim block confirmation', () =>
+          waitForTx(txHash),
+        );
+
+        await optimisticClaimRequests(sortedRequests);
+
+        txModalStages.success(amount, txHash);
         return true;
       } catch (error) {
-        const errorMessage = getErrorMessage(error);
-        dispatchModalState({ type: 'error', errorText: errorMessage });
+        console.error(error);
+        txModalStages.failed(error, onRetry);
         return false;
       }
     },
     [
       contractWeb3,
-      account,
+      address,
       providerWeb3,
-      dispatchModalState,
+      txModalStages,
       optimisticClaimRequests,
+      staticRpcProvider,
+      waitForTx,
+      onRetry,
     ],
   );
 };

@@ -1,18 +1,24 @@
-import { useSDK, useSTETHContractWeb3 } from '@lido-sdk/react';
 import { BigNumber } from 'ethers';
 import { useCallback } from 'react';
-import { useWeb3 } from 'reef-knot/web3-react';
 import invariant from 'tiny-invariant';
+import { useAccount } from 'wagmi';
 
-import { enableQaHelpers, runWithTransactionLogger } from 'utils';
-import { getErrorMessage } from 'utils/getErrorMessage';
-import { isContract } from 'utils/isContract';
-import { TX_OPERATION, useTransactionModal } from 'shared/transaction-modal';
-import { MockLimitReachedError, getAddress, applyGasLimitRatio } from './utils';
-import { getFeeData } from 'utils/getFeeData';
+import {
+  useSDK,
+  useSTETHContractRPC,
+  useSTETHContractWeb3,
+} from '@lido-sdk/react';
 
+import { config } from 'config';
 import { useCurrentStaticRpcProvider } from 'shared/hooks/use-current-static-rpc-provider';
-import { STAKE_FALLBACK_REFERRAL_ADDRESS } from 'config';
+import { isContract } from 'utils/isContract';
+import { runWithTransactionLogger } from 'utils';
+
+import { MockLimitReachedError, getAddress } from './utils';
+import { useTxModalStagesStake } from './hooks/use-tx-modal-stages-stake';
+
+import { sendTx } from 'utils/send-tx';
+import { useTxConfirmation } from 'shared/hooks/use-tx-conformation';
 
 type StakeArguments = {
   amount: BigNumber | null;
@@ -21,121 +27,99 @@ type StakeArguments = {
 
 type StakeOptions = {
   onConfirm?: () => Promise<void> | void;
+  onRetry?: () => void;
 };
 
-export const useStake = ({ onConfirm }: StakeOptions) => {
+export const useStake = ({ onConfirm, onRetry }: StakeOptions) => {
   const stethContractWeb3 = useSTETHContractWeb3();
-  const { account, chainId } = useWeb3();
+  const { address } = useAccount();
+  const stethContract = useSTETHContractRPC();
   const { staticRpcProvider } = useCurrentStaticRpcProvider();
-  const { providerWeb3, providerRpc } = useSDK();
-  const { dispatchModalState } = useTransactionModal();
+  const { providerWeb3 } = useSDK();
+  const { txModalStages } = useTxModalStagesStake();
+  const waitForTx = useTxConfirmation();
+
   return useCallback(
     async ({ amount, referral }: StakeArguments): Promise<boolean> => {
       try {
         invariant(amount, 'amount is null');
-        invariant(chainId, 'chainId is not defined');
-        invariant(account, 'account is not defined');
+        invariant(address, 'account is not defined');
         invariant(providerWeb3, 'providerWeb3 not defined');
         invariant(stethContractWeb3, 'steth is not defined');
 
-        dispatchModalState({
-          type: 'start',
-          operation: TX_OPERATION.CONTRACT,
-          token: 'ETH',
-          amount,
-        });
-
         if (
-          enableQaHelpers &&
+          config.enableQaHelpers &&
           window.localStorage.getItem('mockLimitReached') === 'true'
         ) {
           throw new MockLimitReachedError('Stake limit reached');
         }
 
+        txModalStages.sign(amount);
+
         const [isMultisig, referralAddress] = await Promise.all([
-          isContract(account, providerRpc),
+          isContract(address, staticRpcProvider),
           referral
-            ? getAddress(referral, providerRpc)
-            : STAKE_FALLBACK_REFERRAL_ADDRESS,
+            ? getAddress(referral, staticRpcProvider)
+            : config.STAKE_FALLBACK_REFERRAL_ADDRESS,
         ]);
 
-        dispatchModalState({
-          type: 'signing',
-          operation: TX_OPERATION.CONTRACT,
-        });
-
         const callback = async () => {
-          if (isMultisig) {
-            const tx = await stethContractWeb3.populateTransaction.submit(
-              referralAddress,
-              {
-                value: amount,
-              },
-            );
-            return providerWeb3.getSigner().sendUncheckedTransaction(tx);
-          } else {
-            const { maxFeePerGas, maxPriorityFeePerGas } =
-              await getFeeData(staticRpcProvider);
-            const overrides = {
+          const tx = await stethContractWeb3.populateTransaction.submit(
+            referralAddress,
+            {
               value: amount,
-              maxPriorityFeePerGas,
-              maxFeePerGas,
-            };
+            },
+          );
 
-            const originalGasLimit = await stethContractWeb3.estimateGas.submit(
-              referralAddress,
-              overrides,
-            );
-
-            const gasLimit = applyGasLimitRatio(originalGasLimit);
-
-            return stethContractWeb3.submit(referralAddress, {
-              ...overrides,
-              gasLimit,
-            });
-          }
+          return sendTx({
+            tx,
+            isMultisig,
+            staticProvider: staticRpcProvider,
+            walletProvider: providerWeb3,
+            shouldApplyGasLimitRatio: true,
+            shouldRoundUpGasLimit: true,
+          });
         };
 
-        const transaction = await runWithTransactionLogger(
+        const txHash = await runWithTransactionLogger(
           'Stake signing',
           callback,
         );
 
         if (isMultisig) {
-          dispatchModalState({ type: 'success_multisig' });
+          txModalStages.successMultisig();
           return true;
         }
 
-        if (typeof transaction === 'object') {
-          dispatchModalState({ type: 'block', txHash: transaction.hash });
-          await runWithTransactionLogger('Wrap block confirmation', () =>
-            transaction.wait(),
-          );
-        }
+        txModalStages.pending(amount, txHash);
+
+        await runWithTransactionLogger('Stake block confirmation', () =>
+          waitForTx(txHash),
+        );
+
+        const stethBalance = await stethContract.balanceOf(address);
 
         await onConfirm?.();
 
-        dispatchModalState({ type: 'success' });
+        txModalStages.success(stethBalance, txHash);
 
         return true;
       } catch (error) {
         console.warn(error);
-        dispatchModalState({
-          type: 'error',
-          errorText: getErrorMessage(error),
-        });
+        txModalStages.failed(error, onRetry);
         return false;
       }
     },
     [
-      account,
-      chainId,
-      dispatchModalState,
-      onConfirm,
-      providerRpc,
+      address,
       providerWeb3,
       stethContractWeb3,
+      txModalStages,
       staticRpcProvider,
+      stethContract,
+      onConfirm,
+      waitForTx,
+      onRetry,
     ],
   );
 };

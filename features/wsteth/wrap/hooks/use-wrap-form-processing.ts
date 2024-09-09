@@ -1,108 +1,112 @@
-import invariant from 'tiny-invariant';
-
 import { useCallback } from 'react';
-import { useSDK } from '@lido-sdk/react';
-import { useWeb3 } from 'reef-knot/web3-react';
-import { useWrapTxProcessing } from './use-wrap-tx-processing';
-import { useTransactionModal, TX_OPERATION } from 'shared/transaction-modal';
+import invariant from 'tiny-invariant';
+import { useAccount } from 'wagmi';
 
-import { getErrorMessage, runWithTransactionLogger } from 'utils';
+import { useSDK, useWSTETHContractRPC } from '@lido-sdk/react';
+
+import { useCurrentStaticRpcProvider } from 'shared/hooks/use-current-static-rpc-provider';
+import { runWithTransactionLogger } from 'utils';
 import { isContract } from 'utils/isContract';
+import { useTxConfirmation } from 'shared/hooks/use-tx-conformation';
+
 import type {
   WrapFormApprovalData,
   WrapFormInputType,
 } from '../wrap-form-context';
+import { useWrapTxProcessing } from './use-wrap-tx-processing';
+import { useTxModalWrap } from './use-tx-modal-stages-wrap';
 
 type UseWrapFormProcessorArgs = {
   approvalData: WrapFormApprovalData;
-  onConfirm?: () => Promise<void>;
+  onConfirm: () => Promise<void>;
+  onRetry?: () => void;
 };
 
 export const useWrapFormProcessor = ({
   approvalData,
   onConfirm,
+  onRetry,
 }: UseWrapFormProcessorArgs) => {
-  const { account } = useWeb3();
+  const { address } = useAccount();
   const { providerWeb3 } = useSDK();
-  const { dispatchModalState } = useTransactionModal();
+  const { staticRpcProvider } = useCurrentStaticRpcProvider();
+  const wstETHContractRPC = useWSTETHContractRPC();
+
+  const { txModalStages } = useTxModalWrap();
   const processWrapTx = useWrapTxProcessing();
+  const waitForTx = useTxConfirmation();
   const { isApprovalNeededBeforeWrap, processApproveTx } = approvalData;
 
   return useCallback(
     async ({ amount, token }: WrapFormInputType) => {
-      invariant(amount, 'amount should be presented');
-      invariant(account, 'address should be presented');
-      invariant(providerWeb3, 'provider should be presented');
-
       try {
-        dispatchModalState({
-          type: 'start',
-          operation: isApprovalNeededBeforeWrap
-            ? TX_OPERATION.APPROVE
-            : TX_OPERATION.CONTRACT,
-          token,
-          amount,
-        });
+        invariant(amount, 'amount should be presented');
+        invariant(address, 'address should be presented');
+        invariant(providerWeb3, 'providerWeb3 should be presented');
 
-        const isMultisig = await isContract(account, providerWeb3);
+        const [isMultisig, willReceive] = await Promise.all([
+          isContract(address, staticRpcProvider),
+          wstETHContractRPC.getWstETHByStETH(amount),
+        ]);
 
         if (isApprovalNeededBeforeWrap) {
+          txModalStages.signApproval(amount, token);
+
           await processApproveTx({
-            onTxSent: (tx) => {
-              if (!isMultisig)
-                dispatchModalState({
-                  type: 'block',
-                  txHash: typeof tx === 'string' ? tx : tx.hash,
-                  operation: TX_OPERATION.APPROVE,
-                });
+            onTxSent: (txHash) => {
+              if (!isMultisig) {
+                txModalStages.pendingApproval(amount, token, txHash);
+              }
             },
           });
           if (isMultisig) {
-            dispatchModalState({ type: 'success_multisig' });
+            txModalStages.successMultisig();
             return true;
           }
-          dispatchModalState({
-            type: 'signing',
-            operation: TX_OPERATION.CONTRACT,
-          });
         }
 
-        const transaction = await runWithTransactionLogger('Wrap signing', () =>
+        txModalStages.sign(amount, token, willReceive);
+
+        const txHash = await runWithTransactionLogger('Wrap signing', () =>
           processWrapTx({ amount, token, isMultisig }),
         );
 
         if (isMultisig) {
-          dispatchModalState({ type: 'success_multisig' });
+          txModalStages.successMultisig();
           return true;
         }
 
-        if (typeof transaction === 'object') {
-          dispatchModalState({ type: 'block', txHash: transaction.hash });
-          await runWithTransactionLogger('Wrap block confirmation', () =>
-            transaction.wait(),
-          );
-        }
+        txModalStages.pending(amount, token, willReceive, txHash);
 
-        await onConfirm?.();
-        dispatchModalState({ type: 'success' });
+        await runWithTransactionLogger('Wrap block confirmation', () =>
+          waitForTx(txHash),
+        );
+
+        const [wstethBalance] = await Promise.all([
+          wstETHContractRPC.balanceOf(address),
+          onConfirm(),
+        ]);
+
+        txModalStages.success(wstethBalance, txHash);
         return true;
       } catch (error) {
         console.warn(error);
-        dispatchModalState({
-          type: 'error',
-          errorText: getErrorMessage(error),
-        });
+        txModalStages.failed(error, onRetry);
         return false;
       }
     },
     [
-      account,
+      address,
       providerWeb3,
-      dispatchModalState,
+      staticRpcProvider,
+      wstETHContractRPC,
       isApprovalNeededBeforeWrap,
+      txModalStages,
+      onConfirm,
       processApproveTx,
       processWrapTx,
-      onConfirm,
+      waitForTx,
+      onRetry,
     ],
   );
 };

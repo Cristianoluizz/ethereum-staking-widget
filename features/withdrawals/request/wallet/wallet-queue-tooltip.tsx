@@ -1,15 +1,15 @@
 import { Question, Tooltip } from '@lidofinance/lido-ui';
 
-import { FormatToken } from 'shared/formatters';
+import { MATOMO_CLICK_EVENTS_TYPES } from 'consts/matomo-click-events';
 import { useWaitingTime } from 'features/withdrawals/hooks';
+import { OnlyIpfsRender } from 'shared/components/only-ipfs-render';
+import { OnlyInfraRender } from 'shared/components/only-infra-render';
+import { FormatToken } from 'shared/formatters';
+import { useInpageNavigation } from 'providers/inpage-navigation';
+import { trackMatomoEvent } from 'utils/track-matomo-event';
 
-import {
-  trackMatomoEvent,
-  MATOMO_CLICK_EVENTS_TYPES,
-} from 'config/trackMatomoEvent';
 import { QueueInfoStyled, DataTableRowStyled } from './styles';
 import { useRequestFormData } from '../request-form-context';
-import { useInpageNavigation } from 'providers/inpage-navigation';
 
 export const WalletQueueTooltip = () => {
   const waitingTime = useWaitingTime('');
@@ -23,7 +23,11 @@ export const WalletQueueTooltip = () => {
         title="Amount"
         loading={!unfinalizedStETH}
       >
-        <FormatToken amount={unfinalizedStETH} symbol="stETH" />
+        <FormatToken
+          amount={unfinalizedStETH}
+          symbol="stETH"
+          showAmountTip={false}
+        />
       </DataTableRowStyled>
       <DataTableRowStyled
         title="Waiting time"
@@ -38,19 +42,21 @@ export const WalletQueueTooltip = () => {
   const tooltipTitle = (
     <>
       The withdrawal request time depends on the mode, overall amount of stETH
-      in queue and{' '}
-      <a
-        href="#withdrawalsPeriod"
-        data-testid="otherFactorsLink"
-        onClick={(e) => {
-          trackMatomoEvent(
-            MATOMO_CLICK_EVENTS_TYPES.withdrawalOtherFactorsTooltipMode,
-          );
-          navigateInpageAnchor(e);
-        }}
-      >
-        other factors
-      </a>
+      in queue and <OnlyIpfsRender>other factors</OnlyIpfsRender>
+      <OnlyInfraRender>
+        <a
+          href="#withdrawalsPeriod"
+          data-testid="otherFactorsLink"
+          onClick={(e) => {
+            trackMatomoEvent(
+              MATOMO_CLICK_EVENTS_TYPES.withdrawalOtherFactorsTooltipMode,
+            );
+            navigateInpageAnchor(e);
+          }}
+        >
+          other factors
+        </a>
+      </OnlyInfraRender>
       .{queueInfo}
     </>
   );

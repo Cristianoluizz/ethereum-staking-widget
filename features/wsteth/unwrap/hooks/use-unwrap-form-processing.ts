@@ -1,73 +1,106 @@
-import invariant from 'tiny-invariant';
-
 import { useCallback } from 'react';
-import { useSDK } from '@lido-sdk/react';
-import { useWeb3 } from 'reef-knot/web3-react';
-import { useUnwrapTxProcessing } from './use-unwrap-tx-processing';
-import { useTransactionModal, TX_OPERATION } from 'shared/transaction-modal';
+import invariant from 'tiny-invariant';
+import { useAccount } from 'wagmi';
 
+import {
+  useSDK,
+  useSTETHContractRPC,
+  useWSTETHContractRPC,
+  useWSTETHContractWeb3,
+} from '@lido-sdk/react';
+
+import { useCurrentStaticRpcProvider } from 'shared/hooks/use-current-static-rpc-provider';
 import { isContract } from 'utils/isContract';
-import { getErrorMessage, runWithTransactionLogger } from 'utils';
-import { TOKENS } from 'shared/hook-form/controls/token-select-hook-form';
+import { runWithTransactionLogger } from 'utils';
+
 import type { UnwrapFormInputType } from '../unwrap-form-context';
+import { useTxModalStagesUnwrap } from './use-tx-modal-stages-unwrap';
+import { sendTx } from 'utils/send-tx';
+import { useTxConfirmation } from 'shared/hooks/use-tx-conformation';
 
 type UseUnwrapFormProcessorArgs = {
-  onConfirm?: () => Promise<void>;
+  onConfirm: () => Promise<void>;
+  onRetry?: () => void;
 };
 
 export const useUnwrapFormProcessor = ({
   onConfirm,
+  onRetry,
 }: UseUnwrapFormProcessorArgs) => {
-  const { account } = useWeb3();
+  const { address } = useAccount();
   const { providerWeb3 } = useSDK();
-  const { dispatchModalState } = useTransactionModal();
-  const processWrapTx = useUnwrapTxProcessing();
+  const { staticRpcProvider } = useCurrentStaticRpcProvider();
+  const { txModalStages } = useTxModalStagesUnwrap();
+  const stETHContractRPC = useSTETHContractRPC();
+  const wstETHContractRPC = useWSTETHContractRPC();
+  const wstethContractWeb3 = useWSTETHContractWeb3();
+  const waitForTx = useTxConfirmation();
 
   return useCallback(
     async ({ amount }: UnwrapFormInputType) => {
-      invariant(amount, 'amount should be presented');
-      invariant(account, 'address should be presented');
-      invariant(providerWeb3, 'provider should be presented');
-      const isMultisig = await isContract(account, providerWeb3);
-
       try {
-        dispatchModalState({
-          type: 'start',
-          operation: TX_OPERATION.CONTRACT,
-          token: TOKENS.WSTETH,
-          amount,
-        });
+        invariant(amount, 'amount should be presented');
+        invariant(address, 'address should be presented');
+        invariant(providerWeb3, 'providerWeb3 must be presented');
+        invariant(wstethContractWeb3, 'must have wstethContractWeb3');
 
-        const transaction = await runWithTransactionLogger(
+        const [isMultisig, willReceive] = await Promise.all([
+          isContract(address, staticRpcProvider),
+          wstETHContractRPC.getStETHByWstETH(amount),
+        ]);
+
+        txModalStages.sign(amount, willReceive);
+
+        const txHash = await runWithTransactionLogger(
           'Unwrap signing',
-          () => processWrapTx({ amount, isMultisig }),
+          async () => {
+            const tx =
+              await wstethContractWeb3.populateTransaction.unwrap(amount);
+
+            return sendTx({
+              tx,
+              isMultisig,
+              staticProvider: staticRpcProvider,
+              walletProvider: providerWeb3,
+            });
+          },
         );
 
         if (isMultisig) {
-          dispatchModalState({ type: 'success_multisig' });
+          txModalStages.successMultisig();
           return true;
         }
 
-        if (typeof transaction === 'object') {
-          dispatchModalState({ type: 'block', txHash: transaction.hash });
-          await runWithTransactionLogger(
-            'Unwrap block confirmation',
-            async () => transaction.wait(),
-          );
-        }
+        txModalStages.pending(amount, willReceive, txHash);
 
-        await onConfirm?.();
-        dispatchModalState({ type: 'success' });
+        await runWithTransactionLogger('Unwrap block confirmation', () =>
+          waitForTx(txHash),
+        );
+
+        const [stethBalance] = await Promise.all([
+          stETHContractRPC.balanceOf(address),
+          onConfirm(),
+        ]);
+
+        txModalStages.success(stethBalance, txHash);
         return true;
       } catch (error: any) {
         console.warn(error);
-        dispatchModalState({
-          type: 'error',
-          errorText: getErrorMessage(error),
-        });
+        txModalStages.failed(error, onRetry);
         return false;
       }
     },
-    [account, dispatchModalState, onConfirm, processWrapTx, providerWeb3],
+    [
+      address,
+      providerWeb3,
+      wstethContractWeb3,
+      staticRpcProvider,
+      wstETHContractRPC,
+      txModalStages,
+      stETHContractRPC,
+      onConfirm,
+      waitForTx,
+      onRetry,
+    ],
   );
 };

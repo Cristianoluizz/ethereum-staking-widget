@@ -1,35 +1,33 @@
 import invariant from 'tiny-invariant';
 import { useCallback } from 'react';
 
-import { ContractReceipt, ContractTransaction } from '@ethersproject/contracts';
-import { Zero } from '@ethersproject/constants';
 import { BigNumber } from '@ethersproject/bignumber';
 import { getERC20Contract } from '@lido-sdk/contracts';
-import { useAllowance, useSDK } from '@lido-sdk/react';
+import { useSDK } from '@lido-sdk/react';
 
 import { isContract } from 'utils/isContract';
-import { getFeeData } from 'utils/getFeeData';
 import { runWithTransactionLogger } from 'utils';
 
 import { useCurrentStaticRpcProvider } from './use-current-static-rpc-provider';
-import { STRATEGY_LAZY } from 'utils/swrStrategies';
+import { sendTx } from 'utils/send-tx';
+import { useAllowance } from './use-allowance';
+import { useTxConfirmation } from './use-tx-conformation';
+
+import type { Address, TransactionReceipt } from 'viem';
 
 type ApproveOptions =
   | {
       onTxStart?: () => void | Promise<void>;
-      onTxSent?: (tx: string | ContractTransaction) => void | Promise<void>;
-      onTxAwaited?: (tx: ContractReceipt) => void | Promise<void>;
+      onTxSent?: (tx: string) => void | Promise<void>;
+      onTxAwaited?: (tx: TransactionReceipt) => void | Promise<void>;
     }
   | undefined;
 
 export type UseApproveResponse = {
-  approve: (options?: ApproveOptions) => Promise<void>;
+  approve: (options?: ApproveOptions) => Promise<string>;
+  allowance: ReturnType<typeof useAllowance>['data'];
   needsApprove: boolean;
-  initialLoading: boolean;
-  allowance: BigNumber;
-  loading: boolean;
-  error: unknown;
-};
+} & ReturnType<typeof useAllowance>;
 
 export const useApprove = (
   amount: BigNumber,
@@ -37,98 +35,79 @@ export const useApprove = (
   spender: string,
   owner?: string,
 ): UseApproveResponse => {
-  const { providerWeb3, account, chainId } = useSDK();
+  const { providerWeb3, account } = useSDK();
   const { staticRpcProvider } = useCurrentStaticRpcProvider();
+  const waitForTx = useTxConfirmation();
   const mergedOwner = owner ?? account;
 
   invariant(token != null, 'Token is required');
   invariant(spender != null, 'Spender is required');
 
-  const result = useAllowance(token, spender, mergedOwner, STRATEGY_LAZY);
-  const {
-    data: allowance = Zero,
-    initialLoading,
-    update: updateAllowance,
-  } = result;
+  const allowanceQuery = useAllowance({
+    token: token as Address,
+    account: mergedOwner as Address,
+    spender: spender as Address,
+  });
 
-  const needsApprove =
-    !initialLoading && !amount.isZero() && amount.gt(allowance);
+  const needsApprove = Boolean(
+    allowanceQuery.data && !amount.isZero() && amount.gt(allowanceQuery.data),
+  );
 
   const approve = useCallback<UseApproveResponse['approve']>(
     async ({ onTxStart, onTxSent, onTxAwaited } = {}) => {
       invariant(providerWeb3 != null, 'Web3 provider is required');
-      invariant(chainId, 'chain id is required');
       invariant(account, 'account is required');
       await onTxStart?.();
       const contractWeb3 = getERC20Contract(token, providerWeb3.getSigner());
-      const isMultisig = await isContract(account, providerWeb3);
+      const isMultisig = await isContract(account, staticRpcProvider);
 
       const processApproveTx = async () => {
-        if (isMultisig) {
-          const tx = await contractWeb3.populateTransaction.approve(
-            spender,
-            amount,
-          );
-          const hash = await providerWeb3
-            .getSigner()
-            .sendUncheckedTransaction(tx);
-          return hash;
-        } else {
-          const { maxFeePerGas, maxPriorityFeePerGas } =
-            await getFeeData(staticRpcProvider);
-          const tx = await contractWeb3.approve(spender, amount, {
-            maxFeePerGas,
-            maxPriorityFeePerGas,
-          });
-          return tx;
-        }
+        const tx = await contractWeb3.populateTransaction.approve(
+          spender,
+          amount,
+        );
+        return sendTx({
+          tx,
+          isMultisig,
+          staticProvider: staticRpcProvider,
+          walletProvider: providerWeb3,
+        });
       };
 
-      const approveTx = await runWithTransactionLogger(
+      const approveTxHash = await runWithTransactionLogger(
         'Approve signing',
         processApproveTx,
       );
-      await onTxSent?.(approveTx);
+      await onTxSent?.(approveTxHash);
 
-      if (typeof approveTx === 'object') {
+      if (!isMultisig) {
         const receipt = await runWithTransactionLogger(
           'Approve block confirmation',
-          () => approveTx.wait(),
+          () => waitForTx(approveTxHash),
         );
         await onTxAwaited?.(receipt);
       }
 
-      await updateAllowance();
+      await allowanceQuery.refetch();
+
+      return approveTxHash;
     },
     [
-      chainId,
+      providerWeb3,
       account,
       token,
-      updateAllowance,
+      staticRpcProvider,
+      allowanceQuery,
       spender,
       amount,
-      staticRpcProvider,
-      providerWeb3,
+      waitForTx,
     ],
   );
 
   return {
     approve,
     needsApprove,
-
-    allowance,
-    initialLoading,
-
-    /*
-     * support dependency collection
-     * https://swr.vercel.app/advanced/performance#dependency-collection
-     */
-
-    get loading() {
-      return result.loading;
-    },
-    get error() {
-      return result.error;
-    },
+    allowance: allowanceQuery.data,
+    ...allowanceQuery,
   };
 };

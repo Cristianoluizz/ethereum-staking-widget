@@ -2,19 +2,19 @@
 
 A widget for submitting Ether to the pool based on [Lido Frontend Template](https://github.com/lidofinance/lido-frontend-template).
 
-### Pre-requisites
+### Prerequisites
 
-- Node.js v16
-- Yarn package manager
+- Node.js v20+
+- Yarn package manager v1
 
 This project requires an .env file which is distributed via private communication channels. A sample can be found in .env.example
 
 ### Development
 
-Step 1. Copy the contents of `sample.env` to `.env.local`
+Step 1. Copy the contents of `.env.example` to `.env.local`
 
 ```bash
-cp sample.env .env.local
+cp .env.example .env.local
 ```
 
 Step 2. Fill out the `.env.local`. You will need to provide RPC provider urls with keys included.
@@ -34,7 +34,7 @@ yarn dev
 for IPFS mode below:
 
 ```bash
-yarn dev-ipfs # will start with HMR
+yarn dev:ipfs # will start with HMR
 ```
 
 ### Environment variables
@@ -61,14 +61,16 @@ yarn build && yarn start
 for IPFS mode below:
 
 ```bash
-yarn build-ipfs
+yarn build:ipfs
 ```
 
 ## Adding a new route API
 
+**Deprecated: do not add new endpoints to next api**
+
 - create a new file in `pages/api/` folder
-- use `wrapRequest` function from `utilsApi/apiWrappers.ts`
-- use default wrappers from `utilsApi/apiWrappers.ts` if needed (e.g. `defaultErrorHandler` for handle errors)
+- use `wrapRequest` function from `@lidofinance/next-api-wrapper` package.
+- use default wrappers from `utilsApi/nextApiWrappers.ts` if needed (e.g. `defaultErrorHandler` for handle errors)
 
 **Example:**
 

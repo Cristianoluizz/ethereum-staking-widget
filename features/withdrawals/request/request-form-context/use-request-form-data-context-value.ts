@@ -1,49 +1,70 @@
-import {
-  useSTETHContractRPC,
-  useWSTETHContractRPC,
-  useSTETHBalance,
-  useWSTETHBalance,
-  useContractSWR,
-} from '@lido-sdk/react';
+import { useSTETHContractRPC, useContractSWR } from '@lido-sdk/react';
 import { useClaimData } from 'features/withdrawals/contexts/claim-data-context';
 import { useWithdrawals } from 'features/withdrawals/contexts/withdrawals-context';
 import { useUnfinalizedStETH } from 'features/withdrawals/hooks';
 import { useCallback, useMemo } from 'react';
-import { STRATEGY_LAZY } from 'utils/swrStrategies';
+import { useWstethBySteth } from 'shared/hooks';
+import { useStethBalance, useWstethBalance } from 'shared/hooks/use-balance';
+import { STRATEGY_LAZY } from 'consts/swr-strategies';
 
 // Provides all data fetching for form to function
 export const useRequestFormDataContextValue = () => {
   const { revalidate: revalidateClaimData } = useClaimData();
   // useTotalSupply is bugged and switches to undefined for 1 render
-  const stethTotalSupply = useContractSWR({
-    contract: useSTETHContractRPC(),
-    method: 'totalSupply',
-    config: STRATEGY_LAZY,
-  }).data;
-  const { maxAmount: maxAmountPerRequestSteth, minAmount: minUnstakeSteth } =
-    useWithdrawals();
-  const wstethContract = useWSTETHContractRPC();
-  const { data: balanceSteth, update: stethUpdate } =
-    useSTETHBalance(STRATEGY_LAZY);
-  const { data: balanceWSteth, update: wstethUpdate } =
-    useWSTETHBalance(STRATEGY_LAZY);
-  const { data: unfinalizedStETH, update: unfinalizedStETHUpdate } =
-    useUnfinalizedStETH();
+  const { data: stethTotalSupply, initialLoading: isTotalSupplyLoading } =
+    useContractSWR({
+      contract: useSTETHContractRPC(),
+      method: 'totalSupply',
+      config: STRATEGY_LAZY,
+    });
+  const {
+    maxAmount: maxAmountPerRequestSteth,
+    minAmount: minUnstakeSteth,
+    isWithdrawalsStatusLoading: isMinMaxStethLoading,
+  } = useWithdrawals();
+  const {
+    data: balanceSteth,
+    refetch: stethUpdate,
+    isLoading: isStethBalanceLoading,
+  } = useStethBalance();
+  const {
+    data: balanceWSteth,
+    refetch: wstethUpdate,
+    isLoading: isWstethBalanceLoading,
+  } = useWstethBalance();
+  const {
+    data: unfinalizedStETH,
+    update: unfinalizedStETHUpdate,
+    initialLoading: isUnfinalizedStethLoading,
+  } = useUnfinalizedStETH();
 
-  const maxAmountPerRequestWSteth = useContractSWR({
-    contract: wstethContract,
-    method: 'getWstETHByStETH',
-    params: [maxAmountPerRequestSteth],
-    shouldFetch: !!maxAmountPerRequestSteth,
-    config: STRATEGY_LAZY,
-  }).data;
-  const minUnstakeWSteth = useContractSWR({
-    contract: wstethContract,
-    method: 'getWstETHByStETH',
-    params: [minUnstakeSteth],
-    shouldFetch: !!minUnstakeSteth,
-    config: STRATEGY_LAZY,
-  }).data;
+  const {
+    data: maxAmountPerRequestWSteth,
+    initialLoading: isMaxWstethLoading,
+  } = useWstethBySteth(maxAmountPerRequestSteth);
+  const { data: minUnstakeWSteth, initialLoading: isMinWstethLoading } =
+    useWstethBySteth(minUnstakeSteth);
+
+  const loading = useMemo(
+    () => ({
+      isMinWstethLoading,
+      isMaxWstethLoading,
+      isUnfinalizedStethLoading,
+      isWstethBalanceLoading,
+      isStethBalanceLoading,
+      isMinMaxStethLoading,
+      isTotalSupplyLoading,
+    }),
+    [
+      isMaxWstethLoading,
+      isMinMaxStethLoading,
+      isMinWstethLoading,
+      isStethBalanceLoading,
+      isTotalSupplyLoading,
+      isUnfinalizedStethLoading,
+      isWstethBalanceLoading,
+    ],
+  );
 
   const revalidateRequestFormData = useCallback(async () => {
     await Promise.allSettled([
@@ -65,6 +86,7 @@ export const useRequestFormDataContextValue = () => {
       stethTotalSupply,
       unfinalizedStETH,
       revalidateRequestFormData,
+      loading,
     }),
     [
       balanceSteth,
@@ -76,6 +98,7 @@ export const useRequestFormDataContextValue = () => {
       stethTotalSupply,
       unfinalizedStETH,
       revalidateRequestFormData,
+      loading,
     ],
   );
 };

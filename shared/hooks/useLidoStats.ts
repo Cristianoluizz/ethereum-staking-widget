@@ -1,12 +1,12 @@
 import { useMemo } from 'react';
-import { useSDK, useLidoSWR } from '@lido-sdk/react';
+import { useLidoSWR } from '@lido-sdk/react';
 
-import { DATA_UNAVAILABLE, dynamics } from 'config';
-import { prependBasePath } from 'utils';
+import { DATA_UNAVAILABLE } from 'consts/text';
+import { STRATEGY_LAZY } from 'consts/swr-strategies';
 import { standardFetcher } from 'utils/standardFetcher';
-import { STRATEGY_LAZY } from 'utils/swrStrategies';
+import { ETH_API_ROUTES, getEthApiPath } from 'consts/api';
 
-export type ResponseData = {
+type ResponseData = {
   uniqueAnytimeHolders: string;
   uniqueHolders: string;
   totalStaked: string;
@@ -21,12 +21,9 @@ export const useLidoStats = (): {
   };
   initialLoading: boolean;
 } => {
-  const { chainId } = useSDK();
-  const apiShortLidoStatsPath = `api/short-lido-stats?chainId=${chainId}`;
+  const url = getEthApiPath(ETH_API_ROUTES.STETH_STATS);
   const lidoStats = useLidoSWR<ResponseData>(
-    dynamics.ipfsMode
-      ? `${dynamics.widgetApiBasePathForIpfs}/${apiShortLidoStatsPath}`
-      : prependBasePath(apiShortLidoStatsPath),
+    url,
     standardFetcher,
     STRATEGY_LAZY,
   );

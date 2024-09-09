@@ -9,32 +9,35 @@ import {
   useCallback,
 } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
-import { useEthereumBalance, useSTETHBalance } from '@lido-sdk/react';
-import { parseEther } from '@ethersproject/units';
 import { useRouter } from 'next/router';
+
+import { parseEther } from '@ethersproject/units';
 
 import {
   FormControllerContext,
   FormControllerContextValueType,
 } from 'shared/hook-form/form-controller';
+import { useTokenMaxAmount } from 'shared/hooks/use-token-max-amount';
 import { useStakingLimitInfo } from 'shared/hooks/useStakingLimitInfo';
 import { useMaxGasPrice } from 'shared/hooks';
 import { useIsMultisig } from 'shared/hooks/useIsMultisig';
-import { STRATEGY_LAZY } from 'utils/swrStrategies';
+import { useFormControllerRetry } from 'shared/hook-form/form-controller/use-form-controller-retry-delegate';
 
-import { useStethSubmitGasLimit } from '../hooks';
-import {
-  stakeFormValidationResolver,
-  useStakeFormValidationContext,
-} from './validation';
-import { useStake } from '../use-stake';
+import { config } from 'config';
+
 import {
   type StakeFormDataContextValue,
   type StakeFormInput,
   type StakeFormNetworkData,
 } from './types';
-import { useTokenMaxAmount } from 'shared/hooks/use-token-max-amount';
-import { BALANCE_PADDING } from 'config';
+import {
+  stakeFormValidationResolver,
+  useStakeFormValidationContext,
+} from './validation';
+
+import { useStake } from '../use-stake';
+import { useStethSubmitGasLimit } from '../hooks';
+import { useEthereumBalance, useStethBalance } from 'shared/hooks/use-balance';
 
 //
 // Data context
@@ -54,29 +57,36 @@ export const useStakeFormData = () => {
 };
 
 const useStakeFormNetworkData = (): StakeFormNetworkData => {
-  const { data: stethBalance, update: updateStethBalance } =
-    useSTETHBalance(STRATEGY_LAZY);
+  const {
+    data: stethBalance,
+    refetch: updateStethBalance,
+    isLoading: isStethBalanceLoading,
+  } = useStethBalance();
   const { isMultisig, isLoading: isMultisigLoading } = useIsMultisig();
   const gasLimit = useStethSubmitGasLimit();
-  const maxGasFee = useMaxGasPrice();
+  const { maxGasPrice, initialLoading: isMaxGasPriceLoading } =
+    useMaxGasPrice();
+
   const gasCost = useMemo(
-    () => (gasLimit && maxGasFee ? gasLimit.mul(maxGasFee) : undefined),
-    [gasLimit, maxGasFee],
+    () => (gasLimit && maxGasPrice ? gasLimit.mul(maxGasPrice) : undefined),
+    [gasLimit, maxGasPrice],
   );
 
-  const { data: etherBalance, update: updateEtherBalance } = useEthereumBalance(
-    undefined,
-    STRATEGY_LAZY,
-  );
-  const { data: stakingLimitInfo, mutate: mutateStakeLimit } =
-    useStakingLimitInfo();
+  const {
+    data: etherBalance,
+    refetch: updateEtherBalance,
+    isLoading: isEtherBalanceLoading,
+  } = useEthereumBalance();
+
+  const {
+    data: stakingLimitInfo,
+    mutate: mutateStakeLimit,
+    initialLoading: isStakingLimitLoading,
+  } = useStakingLimitInfo();
 
   const stakeableEther = useMemo(() => {
-    if (
-      etherBalance &&
-      stakingLimitInfo &&
-      stakingLimitInfo.isStakingLimitSet
-    ) {
+    if (!etherBalance || !stakingLimitInfo) return undefined;
+    if (etherBalance && stakingLimitInfo.isStakingLimitSet) {
       return etherBalance.lt(stakingLimitInfo.currentStakeLimit)
         ? etherBalance
         : stakingLimitInfo.currentStakeLimit;
@@ -89,15 +99,15 @@ const useStakeFormNetworkData = (): StakeFormNetworkData => {
     limit: stakingLimitInfo?.currentStakeLimit,
     isPadded: !isMultisig,
     gasLimit: gasLimit,
-    padding: BALANCE_PADDING,
+    padding: config.BALANCE_PADDING,
     isLoading: isMultisigLoading,
   });
 
   const revalidate = useCallback(async () => {
     await Promise.allSettled([
-      updateStethBalance,
-      updateEtherBalance,
-      () => mutateStakeLimit(stakingLimitInfo),
+      updateStethBalance(),
+      updateEtherBalance(),
+      mutateStakeLimit(stakingLimitInfo),
     ]);
   }, [
     updateStethBalance,
@@ -105,6 +115,23 @@ const useStakeFormNetworkData = (): StakeFormNetworkData => {
     mutateStakeLimit,
     stakingLimitInfo,
   ]);
+
+  const loading = useMemo(
+    () => ({
+      isStethBalanceLoading,
+      isMultisigLoading,
+      isMaxGasPriceLoading,
+      isEtherBalanceLoading,
+      isStakeableEtherLoading: isStakingLimitLoading || isEtherBalanceLoading,
+    }),
+    [
+      isEtherBalanceLoading,
+      isMaxGasPriceLoading,
+      isMultisigLoading,
+      isStethBalanceLoading,
+      isStakingLimitLoading,
+    ],
+  );
 
   return {
     stethBalance,
@@ -115,6 +142,7 @@ const useStakeFormNetworkData = (): StakeFormNetworkData => {
     gasCost,
     gasLimit,
     maxAmount,
+    loading,
     revalidate,
   };
 };
@@ -123,7 +151,6 @@ const useStakeFormNetworkData = (): StakeFormNetworkData => {
 // Data provider
 //
 export const StakeFormProvider: FC<PropsWithChildren> = ({ children }) => {
-  const router = useRouter();
   const networkData = useStakeFormNetworkData();
   const validationContextPromise = useStakeFormValidationContext(networkData);
 
@@ -140,27 +167,40 @@ export const StakeFormProvider: FC<PropsWithChildren> = ({ children }) => {
 
   // consumes amount query param
   // SSG safe
+  const { isReady, query, pathname, replace } = useRouter();
   useEffect(() => {
-    if (!router.isReady) return;
+    if (!isReady) return;
     try {
-      const { amount, ref, ...rest } = router.query;
+      const { amount, ref, ...rest } = query;
+
       if (typeof ref === 'string') {
         setValue('referral', ref);
       }
       if (typeof amount === 'string') {
-        void router.replace({ pathname: router.pathname, query: rest });
+        void replace({ pathname, query: rest });
         const amountBN = parseEther(amount);
         setValue('amount', amountBN);
       }
     } catch {
       //noop
     }
-  }, [router, setValue]);
+  }, [isReady, pathname, query, replace, setValue]);
 
-  const stake = useStake({ onConfirm: networkData.revalidate });
+  const { retryEvent, retryFire } = useFormControllerRetry();
+
+  const stake = useStake({
+    onConfirm: networkData.revalidate,
+    onRetry: retryFire,
+  });
 
   const formControllerValue: FormControllerContextValueType<StakeFormInput> =
-    useMemo(() => ({ onSubmit: stake }), [stake]);
+    useMemo(
+      () => ({
+        onSubmit: stake,
+        retryEvent,
+      }),
+      [stake, retryEvent],
+    );
 
   return (
     <FormProvider {...formObject}>

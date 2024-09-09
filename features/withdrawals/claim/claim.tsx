@@ -1,20 +1,24 @@
-import { TransactionModalProvider } from 'shared/transaction-modal/transaction-modal-context';
-import { ClaimFaq } from 'features/withdrawals/withdrawals-faq/claim-faq';
+import { FaqPlaceholder } from 'features/ipfs';
 
+import { OnlyInfraRender } from 'shared/components/only-infra-render';
+import NoSSRWrapper from 'shared/components/no-ssr-wrapper';
+
+import { ClaimFaq } from '../withdrawals-faq/claim-faq';
 import { ClaimForm } from './form';
-import { TxClaimModal } from './tx-modal';
 import { ClaimWallet } from './wallet';
 import { ClaimFormProvider } from './claim-form-context';
 
 export const Claim = () => {
   return (
-    <TransactionModalProvider>
-      <ClaimFormProvider>
+    <ClaimFormProvider>
+      <NoSSRWrapper>
         <ClaimWallet />
         <ClaimForm />
+      </NoSSRWrapper>
+
+      <OnlyInfraRender renderIPFS={<FaqPlaceholder />}>
         <ClaimFaq />
-        <TxClaimModal />
-      </ClaimFormProvider>
-    </TransactionModalProvider>
+      </OnlyInfraRender>
+    </ClaimFormProvider>
   );
 };

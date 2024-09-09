@@ -1,14 +1,21 @@
 import { memo } from 'react';
+
 import { Divider } from '@lidofinance/lido-ui';
-import { useWeb3 } from 'reef-knot/web3-react';
 import { useSDK } from '@lido-sdk/react';
 
-import { CardAccount, CardRow, Fallback } from 'shared/wallet';
-import type { WalletComponentType } from 'shared/wallet/types';
 import {
   WalletWrapperStyled,
   WalletMyRequests,
 } from 'features/withdrawals/shared';
+import { useDappStatus } from 'shared/hooks/use-dapp-status';
+import { useLidoMultichainFallbackCondition } from 'shared/hooks/use-lido-multichain-fallback-condition';
+import {
+  CardAccount,
+  CardRow,
+  Fallback,
+  LidoMultichainFallback,
+} from 'shared/wallet';
+import type { WalletComponentType } from 'shared/wallet/types';
 
 import { WalletAvailableAmount } from './wallet-availale-amount';
 import { WalletPendingAmount } from './wallet-pending-amount';
@@ -32,6 +39,18 @@ export const WalletComponent = () => {
 };
 
 export const ClaimWallet: WalletComponentType = memo((props) => {
-  const { active } = useWeb3();
-  return active ? <WalletComponent {...props} /> : <Fallback {...props} />;
+  const { isDappActive } = useDappStatus();
+  const { showLidoMultichainFallback } = useLidoMultichainFallbackCondition();
+
+  if (showLidoMultichainFallback) {
+    return (
+      <LidoMultichainFallback textEnding={'to claim withdrawals'} {...props} />
+    );
+  }
+
+  if (!isDappActive) {
+    return <Fallback {...props} />;
+  }
+
+  return <WalletComponent {...props} />;
 });

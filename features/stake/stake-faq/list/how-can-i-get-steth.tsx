@@ -1,9 +1,10 @@
 import { FC } from 'react';
 import { Accordion, Link as OuterLink } from '@lidofinance/lido-ui';
 
-import { MATOMO_CLICK_EVENTS_TYPES } from 'config';
-import { trackMatomoEvent } from 'config/trackMatomoEvent';
-import { HOME_PATH } from 'config/urls';
+import { config } from 'config';
+import { MATOMO_CLICK_EVENTS_TYPES } from 'consts/matomo-click-events';
+import { HOME_PATH } from 'consts/urls';
+import { trackMatomoEvent } from 'utils/track-matomo-event';
 import { LocalLink } from 'shared/components/local-link';
 
 export const HowCanIGetSteth: FC = () => {
@@ -11,7 +12,7 @@ export const HowCanIGetSteth: FC = () => {
     <Accordion summary="How can I get stETH?">
       <p>
         You can get stETH many ways, including interacting with the smart
-        contract directly.Yet, it is much easier to use a{' '}
+        contract directly. Yet, it is much easier to use a{' '}
         <LocalLink
           href={HOME_PATH}
           onClick={() =>
@@ -20,10 +21,17 @@ export const HowCanIGetSteth: FC = () => {
           aria-hidden="true"
         >
           Lido Ethereum staking widget
-        </LocalLink>{' '}
-        and in other{' '}
+        </LocalLink>
+        , stake your tokens directly from{' '}
         <OuterLink
-          href={'https://lido.fi/lido-ecosystem?tokens=stETH&categories=Get'}
+          href={'https://www.ledger.com/coin/wallet/ethereum'}
+          data-matomo={MATOMO_CLICK_EVENTS_TYPES.faqHowCanIGetStEthLedger}
+        >
+          Ledger Ethereum wallet
+        </OuterLink>
+        , or in other{' '}
+        <OuterLink
+          href={`${config.rootOrigin}/lido-ecosystem?tokens=stETH&categories=Get`}
           data-matomo={MATOMO_CLICK_EVENTS_TYPES.faqHowCanIGetStEthIntegrations}
         >
           DEX Lido integrations

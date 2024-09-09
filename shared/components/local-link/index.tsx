@@ -2,7 +2,7 @@ import React, { FC, PropsWithChildren } from 'react';
 import { useRouter } from 'next/router';
 import Link, { LinkProps } from 'next/link';
 
-import { dynamics } from 'config';
+import { config } from 'config';
 import { LinkIpfs } from 'shared/components/link-ipfs';
 
 export const LocalLink: FC<PropsWithChildren<LinkProps>> = (props) => {
@@ -18,19 +18,18 @@ export const LocalLink: FC<PropsWithChildren<LinkProps>> = (props) => {
   if (theme && typeof theme === 'string') extraQuery.theme = theme;
 
   if (typeof href === 'string') {
-    if (dynamics.ipfsMode) {
+    if (config.ipfsMode) {
       return <LinkIpfs {...restProps} href={href} query={extraQuery} />;
     }
 
     return (
-      <Link {...restProps} href={{ pathname: href, query: extraQuery }}>
-        {/* TODO: fix when go to Next v13+ */}
-        {/* see: https://nextjs.org/docs/app/building-your-application/upgrading/app-router-migration#link-component */}
-        {/* eslint-disable-next-line jsx-a11y/anchor-has-content,jsx-a11y/click-events-have-key-events,jsx-a11y/no-static-element-interactions */}
-        <a {...restProps} />
-      </Link>
+      <Link
+        {...restProps}
+        legacyBehavior={false}
+        href={{ pathname: href, query: extraQuery }}
+      />
     );
   }
 
-  throw new Error('Prop href is not compatible');
+  throw new Error('Prop href as object is not compatible');
 };

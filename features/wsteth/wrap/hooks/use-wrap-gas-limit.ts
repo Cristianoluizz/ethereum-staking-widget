@@ -1,21 +1,14 @@
+import { useAccount } from 'wagmi';
 import { useLidoSWR, useWSTETHContractRPC } from '@lido-sdk/react';
-import { BigNumber } from 'ethers';
-import { useWeb3 } from 'reef-knot/web3-react';
-import { CHAINS } from '@lido-sdk/constants';
 
-import {
-  ESTIMATE_ACCOUNT,
-  ESTIMATE_AMOUNT,
-  WRAP_FROM_ETH_GAS_LIMIT,
-  WRAP_GAS_LIMIT,
-  WRAP_GAS_LIMIT_GOERLI,
-} from 'config';
+import { config } from 'config';
+import { WRAP_FROM_ETH_GAS_LIMIT, WRAP_GAS_LIMIT } from 'consts/tx';
 import { useCurrentStaticRpcProvider } from 'shared/hooks/use-current-static-rpc-provider';
-import { applyGasLimitRatio } from 'features/stake/stake-form/utils';
+import { applyGasLimitRatio } from 'utils/apply-gas-limit-ratio';
 
 export const useWrapGasLimit = () => {
   const wsteth = useWSTETHContractRPC();
-  const { chainId } = useWeb3();
+  const { chainId } = useAccount();
   const { staticRpcProvider } = useCurrentStaticRpcProvider();
 
   const { data } = useLidoSWR(
@@ -25,27 +18,27 @@ export const useWrapGasLimit = () => {
 
       const fetchGasLimitETH = async () => {
         try {
-          return await staticRpcProvider.estimateGas({
-            from: ESTIMATE_ACCOUNT,
-            to: wsteth.address,
-            value: ESTIMATE_AMOUNT,
-          });
+          return applyGasLimitRatio(
+            await staticRpcProvider.estimateGas({
+              from: config.ESTIMATE_ACCOUNT,
+              to: wsteth.address,
+              value: config.ESTIMATE_AMOUNT,
+            }),
+          );
         } catch (error) {
           console.warn(`${_key}::[eth]`, error);
-          return applyGasLimitRatio(BigNumber.from(WRAP_FROM_ETH_GAS_LIMIT));
+          return applyGasLimitRatio(WRAP_FROM_ETH_GAS_LIMIT);
         }
       };
 
       const fetchGasLimitStETH = async () => {
         try {
-          return await wsteth.estimateGas.wrap(ESTIMATE_AMOUNT, {
-            from: ESTIMATE_ACCOUNT,
+          return await wsteth.estimateGas.wrap(config.ESTIMATE_AMOUNT, {
+            from: config.ESTIMATE_ACCOUNT,
           });
         } catch (error) {
           console.warn(`${_key}::[steth]`, error);
-          return BigNumber.from(
-            chainId === CHAINS.Goerli ? WRAP_GAS_LIMIT_GOERLI : WRAP_GAS_LIMIT,
-          );
+          return WRAP_GAS_LIMIT;
         }
       };
 
@@ -62,10 +55,7 @@ export const useWrapGasLimit = () => {
   );
 
   return {
-    gasLimitETH: data?.gasLimitETH || BigNumber.from(WRAP_FROM_ETH_GAS_LIMIT),
-    gasLimitStETH:
-      data?.gasLimitStETH || chainId === CHAINS.Goerli
-        ? BigNumber.from(WRAP_GAS_LIMIT_GOERLI)
-        : BigNumber.from(WRAP_GAS_LIMIT),
+    gasLimitETH: data?.gasLimitETH || WRAP_FROM_ETH_GAS_LIMIT,
+    gasLimitStETH: data?.gasLimitStETH || WRAP_GAS_LIMIT,
   };
 };

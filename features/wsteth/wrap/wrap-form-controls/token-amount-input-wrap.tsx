@@ -1,27 +1,30 @@
 import { useWatch } from 'react-hook-form';
-import { useWrapFormData, WrapFormInputType } from '../wrap-form-context';
 
 import { TokenAmountInputHookForm } from 'shared/hook-form/controls/token-amount-input-hook-form';
-import { useStakingLimitWarning } from 'shared/hooks/use-staking-limit-warning';
+import { useDappStatus } from 'shared/hooks/use-dapp-status';
 
-export const TokenAmountInputWrap = () => {
+import { useWrapFormData, WrapFormInputType } from '../wrap-form-context';
+
+type TokenAmountInputWrapProps = Pick<
+  React.ComponentProps<typeof TokenAmountInputHookForm>,
+  'warning'
+>;
+
+export const TokenAmountInputWrap = (props: TokenAmountInputWrapProps) => {
+  const { isWalletConnected, isDappActive } = useDappStatus();
   const token = useWatch<WrapFormInputType, 'token'>({ name: 'token' });
-
-  const { maxAmount, isApprovalNeededBeforeWrap, stakeLimitInfo } =
-    useWrapFormData();
-  const { limitWarning } = useStakingLimitWarning(
-    stakeLimitInfo?.stakeLimitLevel,
-  );
+  const { maxAmount, isApprovalNeededBeforeWrap } = useWrapFormData();
 
   return (
     <TokenAmountInputHookForm
+      disabled={isWalletConnected && !isDappActive}
       fieldName="amount"
       token={token}
       data-testid="wrapInput"
       isLocked={isApprovalNeededBeforeWrap}
       maxValue={maxAmount}
-      warning={token === 'ETH' ? limitWarning : null}
       showErrorMessage={false}
+      {...props}
     />
   );
 };

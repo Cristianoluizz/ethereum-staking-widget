@@ -3,7 +3,6 @@ import type { useWrapTxApprove } from '../hooks/use-wrap-tx-approve';
 
 import type { BigNumber } from 'ethers';
 import type { TokensWrappable } from 'features/wsteth/shared/types';
-import type { FormControllerContextValueType } from 'shared/hook-form/form-controller/form-controller-context';
 import { StakeLimitFullInfo } from 'shared/hooks';
 import { LIMIT_LEVEL } from 'types';
 
@@ -17,18 +16,29 @@ export type WrapFormNetworkData = ReturnType<typeof useWrapFormNetworkData>;
 export type WrapFormApprovalData = ReturnType<typeof useWrapTxApprove>;
 
 export type WrapFormValidationContext = {
-  active: boolean;
-  maxAmountETH?: BigNumber;
-  maxAmountStETH?: BigNumber;
-  stakeLimitLevel: LIMIT_LEVEL;
+  asyncContext: Promise<WrapFormAsyncValidationContext>;
 };
 
+export type WrapFormAsyncValidationContext = {
+  stakingLimitLevel: LIMIT_LEVEL;
+  currentStakeLimit: BigNumber;
+  gasCost: BigNumber;
+} & (
+  | {
+      isWalletActive: true;
+      stethBalance: BigNumber;
+      etherBalance: BigNumber;
+      isMultisig: boolean;
+    }
+  | {
+      isWalletActive: false;
+    }
+);
+
 export type WrapFormDataContextValueType = WrapFormNetworkData &
-  WrapFormApprovalData &
-  FormControllerContextValueType<WrapFormInputType> & {
+  WrapFormApprovalData & {
     isSteth: boolean;
     maxAmount?: BigNumber;
-    wrapGasLimit?: BigNumber;
-    willReceiveWsteth?: BigNumber;
+    wrapGasLimit: BigNumber;
     stakeLimitInfo?: StakeLimitFullInfo;
   };

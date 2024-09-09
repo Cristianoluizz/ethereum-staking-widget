@@ -1,5 +1,5 @@
 # build env
-FROM node:16-alpine as build
+FROM node:20-alpine as build
 
 WORKDIR /app
 
@@ -13,7 +13,7 @@ RUN NODE_NO_BUILD_DYNAMICS=true yarn typechain && yarn build
 RUN rm -rf /app/public/runtime && mkdir /app/public/runtime && chown node /app/public/runtime
 
 # final image
-FROM node:16-alpine as base
+FROM node:20-alpine as base
 
 ARG BASE_PATH=""
 ARG SUPPORTED_CHAINS="1"
@@ -22,11 +22,13 @@ ARG DEFAULT_CHAIN="1"
 ENV NEXT_TELEMETRY_DISABLED=1 \
   BASE_PATH=$BASE_PATH \
   SUPPORTED_CHAINS=$SUPPORTED_CHAINS \
- DEFAULT_CHAIN=$DEFAULT_CHAIN
+  DEFAULT_CHAIN=$DEFAULT_CHAIN
 
 WORKDIR /app
-RUN apk add --no-cache curl=~8
+RUN apk add --no-cache curl=~8 
+    
 COPY --from=build /app /app
+RUN chown -R node:node /app/.next
 
 USER node
 EXPOSE 3000
